@@ -1,0 +1,43 @@
+#pragma once
+
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+#include <Arduino.h>
+#include <vector>
+
+namespace cardputer_launcher {
+
+struct WifiSettings {
+  String ssid;
+  String password;
+};
+
+struct Header {
+  String name;
+  String value;
+};
+
+struct WebhookCommand {
+  String name;
+  String method;
+  String url;
+  bool confirm = false;
+  std::vector<Header> headers;
+  String bodyJson;
+};
+
+class ConfigLoader {
+ public:
+  void setSdAvailable(bool available);
+  bool sdAvailable() const;
+  bool loadWifi(WifiSettings& settings);
+  bool loadWebhooks(std::vector<WebhookCommand>& commands);
+  const String& lastError() const;
+
+ private:
+  bool sdAvailable_ = false;
+  String lastError_;
+};
+
+}  // namespace cardputer_launcher
+

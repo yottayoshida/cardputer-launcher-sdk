@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "name": "Deploy Preview",
+      "method": "POST",
+      "url": "https://example.com/webhook/deploy-preview",
+      "confirm": true,
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer REPLACE_WITH_TOKEN"
+      },
+      "body": {
+        "source": "cardputer",
+        "action": "deploy-preview"
+      }
+    },
+    {
+      "name": "Ping Healthcheck",
+      "method": "GET",
+      "url": "https://example.com/webhook/healthcheck",
+      "confirm": false,
+      "headers": {
+        "X-Device": "cardputer-launcher-sdk"
+      }
+    }
+  ]
+}
+
