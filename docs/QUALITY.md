@@ -34,6 +34,7 @@ pio run
 - PlatformIO build attempted and result recorded.
 - Adversarial code review completed.
 - Git commit and `v0.1.0` tag created.
+- Release tags use `vMAJOR.MINOR.PATCH`; GitHub release titles use `vMAJOR.MINOR.PATCH — Summary`.
 
 ## Validation Results
 

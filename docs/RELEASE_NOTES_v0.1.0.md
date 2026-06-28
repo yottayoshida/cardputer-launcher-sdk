@@ -1,4 +1,4 @@
-# Cardputer Launcher SDK v0.1.0 — Tiny Apps for Tiny Computers
+# v0.1.0 — Tiny Apps for Tiny Computers
 
 ## Highlights
 
