@@ -17,6 +17,69 @@ bool ensureSd(bool available, String& error) {
   return true;
 }
 
+bool readRequiredString(JsonVariantConst value, const String& path, String& out, String& error) {
+  if (!value.is<const char*>()) {
+    error = path + " must be a non-empty string";
+    return false;
+  }
+
+  String raw = value.as<const char*>();
+  String probe = raw;
+  probe.trim();
+  if (probe.isEmpty()) {
+    error = path + " must be a non-empty string";
+    return false;
+  }
+  out = raw;
+  return true;
+}
+
+bool validateVersion(JsonVariantConst value, const String& path, String& error) {
+  if (!value.is<int>() || value.as<int>() != 1) {
+    error = path + " must be 1";
+    return false;
+  }
+  return true;
+}
+
+bool hasMember(JsonObject object, const char* key) {
+  for (JsonPair kv : object) {
+    if (String(kv.key().c_str()) == key) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool validateHttpsUrl(const String& url, const String& path, String& error) {
+  if (!url.startsWith("https://")) {
+    error = path + " must use https";
+    return false;
+  }
+
+  String hostAndPath = url.substring(8);
+  int slash = hostAndPath.indexOf('/');
+  int query = hostAndPath.indexOf('?');
+  int fragment = hostAndPath.indexOf('#');
+  int end = hostAndPath.length();
+  if (slash >= 0 && slash < end) {
+    end = slash;
+  }
+  if (query >= 0 && query < end) {
+    end = query;
+  }
+  if (fragment >= 0 && fragment < end) {
+    end = fragment;
+  }
+  String host = hostAndPath.substring(0, end);
+  host.trim();
+  if (host.isEmpty()) {
+    error = path + " must include a host";
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 void ConfigLoader::setSdAvailable(bool available) { sdAvailable_ = available; }
@@ -42,10 +105,23 @@ bool ConfigLoader::loadWifi(WifiSettings& settings) {
     return false;
   }
 
-  const char* ssid = doc["wifi"]["ssid"] | "";
-  const char* password = doc["wifi"]["password"] | "";
-  if (strlen(ssid) == 0 || strlen(password) == 0) {
-    lastError_ = "Wi-Fi config missing";
+  if (!validateVersion(doc["version"], "settings.version", lastError_)) {
+    return false;
+  }
+
+  if (!doc["wifi"].is<JsonObject>()) {
+    lastError_ = "settings.wifi must be an object";
+    return false;
+  }
+
+  String ssid;
+  if (!readRequiredString(doc["wifi"]["ssid"], "settings.wifi.ssid", ssid, lastError_)) {
+    return false;
+  }
+
+  String password;
+  if (!readRequiredString(doc["wifi"]["password"], "settings.wifi.password", password,
+                          lastError_)) {
     return false;
   }
 
@@ -75,45 +151,107 @@ bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands) {
     return false;
   }
 
-  if ((doc["version"] | 0) != 1 || !doc["commands"].is<JsonArray>()) {
-    lastError_ = "webhook config invalid";
+  if (!validateVersion(doc["version"], "webhook config version", lastError_)) {
     return false;
   }
 
-  for (JsonObject item : doc["commands"].as<JsonArray>()) {
-    WebhookCommand command;
-    command.name = item["name"] | "";
-    command.method = item["method"] | "";
-    command.method.toUpperCase();
-    command.url = item["url"] | "";
-    command.confirm = item["confirm"] | false;
+  if (!doc["commands"].is<JsonArray>()) {
+    lastError_ = "webhook config commands must be a non-empty array";
+    return false;
+  }
 
-    if (command.name.isEmpty() || command.url.isEmpty() ||
-        (command.method != "GET" && command.method != "POST")) {
-      lastError_ = "webhook command invalid";
+  JsonArray items = doc["commands"].as<JsonArray>();
+  if (items.size() == 0) {
+    lastError_ = "webhook config commands must be a non-empty array";
+    return false;
+  }
+
+  size_t index = 0;
+  for (JsonVariant itemVariant : items) {
+    String path = String("commands[") + index + "]";
+    if (!itemVariant.is<JsonObject>()) {
+      lastError_ = path + " must be an object";
       commands.clear();
       return false;
     }
 
-    if (item["headers"].is<JsonObject>()) {
+    JsonObject item = itemVariant.as<JsonObject>();
+    WebhookCommand command;
+    if (!readRequiredString(item["name"], path + ".name", command.name, lastError_)) {
+      commands.clear();
+      return false;
+    }
+
+    if (!readRequiredString(item["method"], path + ".method", command.method, lastError_)) {
+      commands.clear();
+      return false;
+    }
+    command.method.toUpperCase();
+
+    if (command.method != "GET" && command.method != "POST") {
+      lastError_ = path + ".method must be GET or POST";
+      commands.clear();
+      return false;
+    }
+
+    if (!readRequiredString(item["url"], path + ".url", command.url, lastError_)) {
+      commands.clear();
+      return false;
+    }
+
+    if (!validateHttpsUrl(command.url, path + ".url", lastError_)) {
+      commands.clear();
+      return false;
+    }
+
+    if (hasMember(item, "confirm")) {
+      if (!item["confirm"].is<bool>()) {
+        lastError_ = path + ".confirm must be true or false";
+        commands.clear();
+        return false;
+      }
+      command.confirm = item["confirm"].as<bool>();
+    }
+
+    if (!item["headers"].isNull()) {
+      if (!item["headers"].is<JsonObject>()) {
+        lastError_ = path + ".headers must be an object";
+        commands.clear();
+        return false;
+      }
       for (JsonPair kv : item["headers"].as<JsonObject>()) {
+        String key = kv.key().c_str();
+        String keyProbe = key;
+        keyProbe.trim();
+        if (keyProbe.isEmpty()) {
+          lastError_ = path + ".headers key must be a non-empty string";
+          commands.clear();
+          return false;
+        }
+
+        String value;
+        if (!readRequiredString(kv.value(), path + ".headers." + key, value, lastError_)) {
+          commands.clear();
+          return false;
+        }
         Header header;
-        header.name = kv.key().c_str();
-        header.value = kv.value().as<const char*>() ? kv.value().as<const char*>() : "";
+        header.name = key;
+        header.value = value;
         command.headers.push_back(header);
       }
     }
 
     if (!item["body"].isNull()) {
+      if (command.method == "GET") {
+        lastError_ = path + ".body is only supported for POST";
+        commands.clear();
+        return false;
+      }
       serializeJson(item["body"], command.bodyJson);
     }
 
     commands.push_back(command);
-  }
-
-  if (commands.empty()) {
-    lastError_ = "no webhook commands";
-    return false;
+    ++index;
   }
 
   lastError_ = "";
@@ -123,4 +261,3 @@ bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands) {
 const String& ConfigLoader::lastError() const { return lastError_; }
 
 }  // namespace cardputer_launcher
-

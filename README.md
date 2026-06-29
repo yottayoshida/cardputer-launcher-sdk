@@ -75,6 +75,7 @@ Example `settings.json`:
 
 ```json
 {
+  "version": 1,
   "wifi": {
     "ssid": "YOUR_WIFI_SSID",
     "password": "YOUR_WIFI_PASSWORD"
@@ -102,6 +103,34 @@ Example webhook command:
 ```
 
 Do not commit real secrets. The checked-in examples use placeholders only.
+
+### Config Schema Reference
+
+`/settings.json`:
+
+- `version`: required integer. Must be `1`.
+- `wifi.ssid`: required non-empty string.
+- `wifi.password`: required non-empty string.
+
+`/apps/webhook_launcher.json`:
+
+- `version`: required integer. Must be `1`.
+- `commands`: required non-empty array of command objects.
+- `commands[].name`: required non-empty string shown in the launcher.
+- `commands[].method`: required string. Supported values are `GET` and `POST`.
+- `commands[].url`: required HTTPS URL with a host.
+- `commands[].confirm`: optional boolean. Use `true` for risky commands.
+- `commands[].headers`: optional object with non-empty keys and string values.
+- `commands[].body`: optional JSON value for `POST` commands only.
+
+Validate an SD-card tree before copying it to the device:
+
+```bash
+python3 scripts/validate_configs.py sdcard
+```
+
+When migrating from `v0.1.0` samples, add `"version": 1` at the top level of
+`settings.json`. The validator and firmware reject unversioned settings files.
 
 ## Architecture Summary
 

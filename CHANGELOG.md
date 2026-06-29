@@ -12,6 +12,14 @@ The format is inspired by Keep a Changelog, and this project uses semantic versi
 - Local CI helper scripts and documentation for reproducing failures before opening a PR.
 - Hardware acceptance checklist and v1.0 evidence gate for Cardputer ADV release certification.
 
+### Changed
+
+- Require `settings.json` to include top-level `"version": 1` for host and firmware validation.
+
+### Fixed
+
+- Tighten firmware Webhook Launcher config validation for HTTPS URLs, command arrays, header values, GET bodies, and field-specific errors.
+
 ## [0.1.0] - 2026-06-29
 
 ### Added
