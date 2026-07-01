@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "id": "webhook_launcher",
+  "name": "Webhook Launcher",
+  "version": "1.0.0",
+  "config": "commands.json"
+}

@@ -47,7 +47,7 @@ The initial `platformio.ini` uses `esp32-s3-devkitc-1` plus the M5Cardputer libr
 1. Install PlatformIO Core.
 2. Copy the `sdcard/` directory contents to the root of a FAT-formatted SD card.
 3. Edit `settings.json` with your Wi-Fi SSID and password.
-4. Edit `apps/webhook_launcher.json` with your own HTTPS webhook URLs.
+4. Edit `apps/webhook_launcher/commands.json` with your own HTTPS webhook URLs.
 5. Build the firmware:
 
 ```bash
@@ -67,8 +67,11 @@ See [docs/CI.md](docs/CI.md) for local reproduction commands and release tag che
 
 ```text
 /settings.json
-/apps/webhook_launcher.json
+/apps/webhook_launcher/manifest.json
+/apps/webhook_launcher/commands.json
 /logs/launcher.jsonl
+/cache/
+/backups/
 ```
 
 Example `settings.json`:
@@ -102,6 +105,12 @@ Example webhook command:
 }
 ```
 
+`apps/webhook_launcher/manifest.json` identifies the app-pack and points at
+`commands.json`. `logs/` is append-only runtime output, `cache/` is disposable,
+and `backups/` is reserved for copies made before manual edits or future
+migrations. Existing v0.1 cards that still use `/apps/webhook_launcher.json`
+remain supported as a legacy compatibility path.
+
 Do not commit real secrets. The checked-in examples use placeholders only.
 
 ### Config Schema Reference
@@ -132,6 +141,13 @@ python3 scripts/validate_configs.py sdcard
 When migrating from `v0.1.0` samples, add `"version": 1` at the top level of
 `settings.json`. The validator and firmware reject unversioned settings files.
 
+Back up the SD card before editing or migrating it. User-owned JSON files carry
+a schema version, and unsupported versions fail validation instead of being
+rewritten. If validation reports a partial write, inspect the file, remove stale
+`*.tmp` files only after confirming the real JSON file is intact, and re-run
+validation before booting the device. In short: remove stale *.tmp files only
+after checking the canonical JSON, then re-run validation.
+
 ## Architecture Summary
 
 The firmware has five small layers:
@@ -153,7 +169,7 @@ Read [docs/SECURITY.md](docs/SECURITY.md) before using real workflows.
 
 ## Validation
 
-Validate sample configs:
+Validate the whole sample SD-card tree:
 
 ```bash
 python3 scripts/validate_configs.py

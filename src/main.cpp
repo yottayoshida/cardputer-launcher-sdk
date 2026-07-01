@@ -46,6 +46,7 @@ void setup() {
 
   const bool sdAvailable = initializeSd();
   config.setSdAvailable(sdAvailable);
+  config.ensureLayout();
   logs.begin(sdAvailable);
 
   registry.add(&webhookApp);

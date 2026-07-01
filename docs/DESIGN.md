@@ -175,7 +175,9 @@ v1.0 does not load binary apps from SD card unless a separate sandbox design exi
 
 ## Config-Driven App Model
 
-The Webhook Launcher proves the config-driven model. Commands are declared in `apps/webhook_launcher.json` with:
+The Webhook Launcher proves the config-driven model. The v1.0 SD-card shape is
+an app-pack directory: `apps/webhook_launcher/manifest.json` describes the pack,
+and `apps/webhook_launcher/commands.json` contains commands with:
 
 - `name`
 - `method`
@@ -184,7 +186,23 @@ The Webhook Launcher proves the config-driven model. Commands are declared in `a
 - optional JSON `body`
 - optional `confirm`
 
-This is enough to make the device useful without promising a dynamic runtime.
+The older `/apps/webhook_launcher.json` file remains a legacy compatibility
+path. This is enough to make the device useful without promising a dynamic
+runtime.
+
+## SD-Card Recovery Model
+
+Firmware creates missing non-secret directories for `/apps`,
+`/apps/webhook_launcher`, `/logs`, `/cache`, and `/backups`. It does not create
+settings.json, command packs, or secret-bearing files. Malformed JSON remains a
+clear load error so users can repair the card on a host instead of losing data
+to an automatic rewrite.
+
+Back up the SD card before editing or migration. User-owned files use an
+explicit schema version, and unknown versions must fail validation. If a host
+validator reports a partial write, inspect the affected file, remove stale
+*.tmp files after confirming the canonical JSON is intact, then re-run
+validation before booting the Cardputer.
 
 ## Built-In Apps
 

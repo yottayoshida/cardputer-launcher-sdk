@@ -5,11 +5,11 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 
+#include "storage/SdLayout.h"
+
 namespace cardputer_launcher {
 
 namespace {
-
-const char* kLogPath = "/logs/launcher.jsonl";
 
 bool hasSecretWord(const String& lowered) {
   return lowered.indexOf("authorization") >= 0 || lowered.indexOf("bearer ") >= 0 ||
@@ -30,7 +30,7 @@ String limitPreview(const String& value) {
 void LogStore::begin(bool sdAvailable) {
   sdAvailable_ = sdAvailable;
   if (sdAvailable_) {
-    SD.mkdir("/logs");
+    SD.mkdir(kSdLogDir);
   }
 }
 
@@ -39,7 +39,7 @@ bool LogStore::appendRequest(const RequestLogEntry& entry) {
     return false;
   }
 
-  File file = SD.open(kLogPath, FILE_APPEND);
+  File file = SD.open(kSdLauncherLogPath, FILE_APPEND);
   if (!file) {
     return false;
   }
@@ -65,7 +65,7 @@ std::vector<String> LogStore::readRecent(size_t maxLines) {
     return lines;
   }
 
-  File file = SD.open(kLogPath, FILE_READ);
+  File file = SD.open(kSdLauncherLogPath, FILE_READ);
   if (!file) {
     lines.push_back("No logs yet");
     return lines;
@@ -97,4 +97,3 @@ String LogStore::redact(const String& value) const {
 bool LogStore::available() const { return sdAvailable_; }
 
 }  // namespace cardputer_launcher
-

@@ -15,6 +15,7 @@
 #include "network/WifiManager.h"
 #include "storage/ConfigLoader.h"
 #include "storage/LogStore.h"
+#include "storage/SdLayout.h"
 #include "ui/DisplayPort.h"
 #include "ui/Menu.h"
 #include "ui/StatusBar.h"
