@@ -97,7 +97,7 @@ Log Viewer:
 
 ```json
 {
-  "id": "log_viewer",
+  "id": "logs",
   "name": "Log Viewer",
   "version": "0.1.0",
   "category": "diagnostics",
@@ -116,7 +116,7 @@ launcher menu
   select app
     onStart()
     onFocus()
-    loop: onInput() for events, onTick() every loop, render() when dirty
+    loop: onInput() for events, onTick() every loop, render()
   back
     onBlur()
     onStop()
@@ -127,7 +127,7 @@ Rules:
 
 - `onStart()` loads app state and config needed for a foreground session.
 - `onFocus()` is for short foreground-entry UI updates and should not allocate large state.
-- `onTick()` is optional and must be fast; long network or storage work remains explicit app behavior.
+- `onTick()` is optional and must be fast; it marks the active app dirty so polling updates can redraw. Long network or storage work remains explicit app behavior.
 - `onBlur()` cancels transient prompts or input state.
 - `onStop()` releases foreground session state.
 - `onSuspend()` and `onResume()` are reserved for the later multi-state lifecycle in #15.

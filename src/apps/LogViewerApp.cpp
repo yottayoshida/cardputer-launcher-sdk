@@ -10,6 +10,18 @@ const char* LogViewerApp::id() const { return "logs"; }
 
 const char* LogViewerApp::name() const { return "Log Viewer"; }
 
+AppManifest LogViewerApp::manifest() const {
+  return {
+      id(),
+      name(),
+      CARDPUTER_LAUNCHER_VERSION,
+      "diagnostics",
+      "",
+      kPermissionStorageRead | kPermissionInputKeyboard | kPermissionDisplayDraw,
+      kCapabilityLogView,
+  };
+}
+
 void LogViewerApp::onStart(AppContext& ctx) { lines_ = ctx.logs.readRecent(5); }
 
 void LogViewerApp::onInput(AppContext& ctx, const InputEvent& event) {
@@ -31,4 +43,3 @@ void LogViewerApp::render(AppContext& ctx) {
 }
 
 }  // namespace cardputer_launcher
-

@@ -108,11 +108,70 @@ Edit /settings.json
 
 ## App Model
 
-An app is a small C++ object with an id, display name, lifecycle hooks, input handling, and render method. The launcher owns navigation and calls the active app. v0.1 uses compile-time registration so memory, startup behavior, and build output remain predictable.
+An app is a small C++ object with an id, display name, manifest metadata, lifecycle hooks, input handling, and render method. The launcher owns navigation and calls the active app. v0.1 uses compile-time registration so memory, startup behavior, and build output remain predictable.
+
+The lightweight lifecycle is foreground-only:
+
+- `onStart`: load foreground session state.
+- `onFocus`: enter the active foreground slot.
+- `onTick`: run fast foreground polling once per loop and allow redraws.
+- `onBlur`: leave the active foreground slot.
+- `onStop`: release foreground session state.
+- `onSuspend` and `onResume`: reserved for the later multi-state lifecycle in v1.0.
 
 ## App Manifest Model
 
-The v1.0 direction is a manifest that describes app id, title, version, permissions, config schema, command entries, and assets. v0.1 does not load binary apps from manifests. It uses JSON config files for built-in apps only.
+The v1.0 direction is a manifest that describes app `id`, `name`, `version`, app category, `configPath`, `permissions`, `capabilities`, command entries, config schema, and assets. The first firmware draft keeps this as C++ metadata on built-in apps.
+
+Permission vocabulary:
+
+- `storage.read`
+- `storage.write`
+- `network.http`
+- `input.keyboard`
+- `display.draw`
+- `ir.transmit`
+- `sensor.read`
+
+Capability vocabulary:
+
+- `command.list`
+- `command.execute`
+- `config.reload`
+- `log.view`
+- `notes.edit`
+- `ir.send`
+- `sensor.view`
+
+Webhook Launcher manifest example:
+
+```json
+{
+  "id": "webhook_launcher",
+  "name": "Webhook Launcher",
+  "version": "0.1.0",
+  "category": "automation",
+  "configPath": "/apps/webhook_launcher.json",
+  "permissions": ["storage.read", "storage.write", "network.http", "input.keyboard", "display.draw"],
+  "capabilities": ["command.list", "command.execute", "config.reload"]
+}
+```
+
+Log Viewer manifest example:
+
+```json
+{
+  "id": "logs",
+  "name": "Log Viewer",
+  "version": "0.1.0",
+  "category": "diagnostics",
+  "configPath": "",
+  "permissions": ["storage.read", "input.keyboard", "display.draw"],
+  "capabilities": ["log.view"]
+}
+```
+
+v1.0 does not load binary apps from SD card unless a separate sandbox design exists. The current firmware uses JSON config files for built-in apps only.
 
 ## Config-Driven App Model
 
@@ -174,4 +233,3 @@ The project favors honest limitations over false comfort. v0.1 examples use plac
 - v0.3.0: richer app lifecycle, Notes and IR Remote prototypes, input improvements.
 - v0.5.0: QR handoff, sensor viewer, safer secret handling, optional sync experiment.
 - v1.0.0: polished appkit, stable APIs, app manifests, permission model, examples, and a security-reviewed release process.
-

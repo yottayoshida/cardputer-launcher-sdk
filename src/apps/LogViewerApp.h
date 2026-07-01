@@ -13,6 +13,7 @@ class LogViewerApp : public App {
  public:
   const char* id() const override;
   const char* name() const override;
+  AppManifest manifest() const override;
   void onStart(AppContext& ctx) override;
   void onInput(AppContext& ctx, const InputEvent& event) override;
   void render(AppContext& ctx) override;
@@ -22,4 +23,3 @@ class LogViewerApp : public App {
 };
 
 }  // namespace cardputer_launcher
-

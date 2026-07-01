@@ -12,6 +12,19 @@ const char* WebhookLauncherApp::id() const { return "webhook_launcher"; }
 
 const char* WebhookLauncherApp::name() const { return "Webhook Launcher"; }
 
+AppManifest WebhookLauncherApp::manifest() const {
+  return {
+      id(),
+      name(),
+      CARDPUTER_LAUNCHER_VERSION,
+      "automation",
+      "/apps/webhook_launcher.json",
+      kPermissionStorageRead | kPermissionStorageWrite | kPermissionNetworkHttp |
+          kPermissionInputKeyboard | kPermissionDisplayDraw,
+      kCapabilityCommandList | kCapabilityCommandExecute | kCapabilityConfigReload,
+  };
+}
+
 void WebhookLauncherApp::onStart(AppContext& ctx) {
   commands_.clear();
   menu_.clear();
@@ -131,4 +144,3 @@ void WebhookLauncherApp::rebuildMenu() {
 }
 
 }  // namespace cardputer_launcher
-

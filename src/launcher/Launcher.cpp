@@ -27,6 +27,7 @@ void Launcher::handleInput(AppContext& ctx, const InputEvent& event) {
 
   if (activeApp_ != nullptr) {
     if (event.action == InputAction::Back) {
+      activeApp_->onBlur(ctx);
       activeApp_->onStop(ctx);
       activeApp_ = nullptr;
       dirty_ = true;
@@ -45,6 +46,13 @@ void Launcher::handleInput(AppContext& ctx, const InputEvent& event) {
     dirty_ = true;
   } else if (event.action == InputAction::Select) {
     openSelected(ctx);
+  }
+}
+
+void Launcher::tick(AppContext& ctx) {
+  if (activeApp_ != nullptr) {
+    activeApp_->onTick(ctx);
+    dirty_ = true;
   }
 }
 
@@ -71,8 +79,8 @@ void Launcher::openSelected(AppContext& ctx) {
   }
   activeApp_ = app;
   activeApp_->onStart(ctx);
+  activeApp_->onFocus(ctx);
   dirty_ = true;
 }
 
 }  // namespace cardputer_launcher
-
