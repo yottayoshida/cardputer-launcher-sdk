@@ -220,9 +220,13 @@ def _validate_webhook_app_pack(root):
         raise ValidationError(
             f"{WEBHOOK_MANIFEST_PATH.as_posix()}: app manifest.id must be {WEBHOOK_APP_ID}"
         )
+    if manifest["config"] != WEBHOOK_COMMANDS_PATH.name:
+        raise ValidationError(
+            f"{WEBHOOK_MANIFEST_PATH.as_posix()}: "
+            f"app manifest.config must be {WEBHOOK_COMMANDS_PATH.name}"
+        )
 
-    commands_path = WEBHOOK_PACK_DIR / manifest["config"]
-    commands = _validate_json_file(root, commands_path, validate_webhook_config)
+    commands = _validate_json_file(root, WEBHOOK_COMMANDS_PATH, validate_webhook_config)
     return {"manifest": manifest, "commands": commands}
 
 

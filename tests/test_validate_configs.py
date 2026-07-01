@@ -292,6 +292,33 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertIn("apps/webhook_launcher/commands.json", message)
         self.assertIn("commands[0].url", message)
 
+    def test_webhook_manifest_config_must_match_firmware_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_valid_sd_tree(root)
+            (root / "apps/webhook_launcher/manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "id": "webhook_launcher",
+                        "name": "Webhook Launcher",
+                        "version": "1.0.0",
+                        "config": "alternate.json",
+                    }
+                )
+            )
+            (root / "apps/webhook_launcher/alternate.json").write_text(
+                (root / "apps/webhook_launcher/commands.json").read_text()
+            )
+
+            with self.assertRaises(ValidationError) as raised:
+                validate_root(root)
+
+        message = str(raised.exception)
+        self.assertIn("apps/webhook_launcher/manifest.json", message)
+        self.assertIn("app manifest.config", message)
+        self.assertIn("commands.json", message)
+
     def test_partial_write_residue_fails_validation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

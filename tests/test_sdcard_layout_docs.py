@@ -60,6 +60,12 @@ class SdCardLayoutDocsTests(unittest.TestCase):
         self.assertIn("SD-card app-pack layout", changelog)
         self.assertIn("whole-tree validator", changelog)
 
+    def test_webhook_command_example_uses_app_pack_path(self):
+        example = (REPO_ROOT / "examples/webhook_command/README.md").read_text()
+
+        self.assertIn("sdcard/apps/webhook_launcher/commands.json", example)
+        self.assertNotIn("sdcard/apps/webhook_launcher.json", example)
+
 
 if __name__ == "__main__":
     unittest.main()

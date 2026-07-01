@@ -1,6 +1,6 @@
 # Webhook Command Example
 
-Add a command to `sdcard/apps/webhook_launcher.json`:
+Add a command to `sdcard/apps/webhook_launcher/commands.json`:
 
 ```json
 {
@@ -20,4 +20,3 @@ Add a command to `sdcard/apps/webhook_launcher.json`:
 ```
 
 Use low-privilege webhook tokens and avoid placing real secrets in checked-in files.
-

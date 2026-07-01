@@ -138,7 +138,7 @@ Adversarial review checks memory, parsing, logging, security claims, docs, and r
 
 ### Example Config Validation
 
-`scripts/validate_configs.py` validates `sdcard/settings.json` and `sdcard/apps/webhook_launcher.json`.
+`scripts/validate_configs.py` validates `sdcard/settings.json` and the Webhook Launcher app pack at `sdcard/apps/webhook_launcher/manifest.json` plus `sdcard/apps/webhook_launcher/commands.json`.
 
 ### Manual Hardware Test Plan
 
