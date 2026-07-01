@@ -18,6 +18,8 @@ pio run
 
 ## Manual Hardware Test Plan
 
+The canonical manual hardware suite is `docs/HARDWARE_ACCEPTANCE.md`.
+
 1. Boot without SD card. Expected: visible SD/config error, no crash.
 2. Boot with sample SD card and placeholder Wi-Fi. Expected: Wi-Fi failure is visible and logged if possible.
 3. Boot with real low-privilege Wi-Fi and test webhook. Expected: command list loads, confirmation appears, request sends, result is shown.
@@ -35,6 +37,10 @@ pio run
 - Adversarial code review completed.
 - Git commit and `v0.1.0` tag created.
 - Release tags use `vMAJOR.MINOR.PATCH`; GitHub release titles use `vMAJOR.MINOR.PATCH — Summary`.
+
+## v1.0 Hardware Evidence Gate
+
+v1.0 hardware evidence must include a completed `docs/HARDWARE_ACCEPTANCE.md` Evidence Record for the supported Cardputer ADV target. A release without that evidence must not be marked hardware-certified, even if host tests and firmware builds pass.
 
 ## Validation Results
 

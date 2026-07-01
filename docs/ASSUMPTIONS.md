@@ -17,6 +17,7 @@ Date: 2026-06-28
 - The local PlatformIO board registry lookup for `m5stack` did not complete during setup, so `platformio.ini` uses `esp32-s3-devkitc-1` plus the M5Cardputer library as the initial build target.
 - The SD-card mount is attempted with the default Arduino SD initialization path in v0.1.0. Hardware-specific pin corrections may be needed after first device testing.
 - The code uses static app registration for v0.1.0. Dynamic plugin loading is intentionally out of scope.
+- Update after hardware acceptance: after a maintainer runs `docs/HARDWARE_ACCEPTANCE.md` on real Cardputer ADV evidence, update this section with the observed board target, SD behavior, power/reset notes, and unsupported setups.
 
 ## Security Assumptions
 
