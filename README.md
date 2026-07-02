@@ -6,7 +6,7 @@ Cardputer Launcher SDK is a small PlatformIO firmware project plus documentation
 
 ## Project Status
 
-Version: `v0.1.0`
+Version: `v0.2.0`
 
 Status: early OSS release. The v0.1.0 code is intentionally small and conservative. It is meant to be readable, flashable, and useful as a starting point, not a complete dynamic app marketplace.
 
