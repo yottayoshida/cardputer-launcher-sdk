@@ -33,13 +33,20 @@ def _require_string(value, path):
     return value
 
 
+def _require_version(value, path):
+    if isinstance(value, bool) or not isinstance(value, int) or value != 1:
+        raise ValidationError(f"{path} must be 1")
+    return value
+
+
 def validate_settings(data):
     root = _require_object(data, "settings")
+    _require_version(root.get("version"), "settings.version")
     wifi = _require_object(root.get("wifi"), "settings.wifi")
     ssid = _require_string(wifi.get("ssid"), "settings.wifi.ssid")
     password = _require_string(wifi.get("password"), "settings.wifi.password")
 
-    return {"wifi": {"ssid": ssid, "password": password}}
+    return {"version": 1, "wifi": {"ssid": ssid, "password": password}}
 
 
 def _validate_url(value, path):
@@ -74,9 +81,7 @@ def _validate_json_body(value, path):
 
 def validate_webhook_config(data):
     root = _require_object(data, "webhook config")
-    version = root.get("version")
-    if version != 1:
-        raise ValidationError("webhook config version must be 1")
+    _require_version(root.get("version"), "webhook config version")
 
     commands = root.get("commands")
     if not isinstance(commands, list) or not commands:
