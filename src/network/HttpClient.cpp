@@ -20,21 +20,43 @@ String hostOf(const String& url) {
     return "";
   }
   int start = schemeEnd + 3;
-  if (start >= static_cast<int>(url.length())) {
+  const int urlLength = static_cast<int>(url.length());
+  if (start >= urlLength) {
     return "";
   }
+
+  int authorityEnd = urlLength;
+  for (int index = start; index < urlLength; ++index) {
+    const char c = url[index];
+    if (c == '/' || c == '?' || c == '#') {
+      authorityEnd = index;
+      break;
+    }
+  }
+
+  // A "user:pass@" userinfo prefix must not be mistaken for the host: the
+  // underlying HTTP client connects to whatever follows the last '@'.
+  for (int index = authorityEnd - 1; index >= start; --index) {
+    if (url[index] == '@') {
+      start = index + 1;
+      break;
+    }
+  }
+  if (start >= authorityEnd) {
+    return "";
+  }
+
   if (url[start] == '[') {
     const int end = url.indexOf(']', start + 1);
-    if (end < 0) {
+    if (end < 0 || end > authorityEnd) {
       return "";
     }
     return url.substring(start + 1, end);
   }
 
-  int end = url.length();
-  for (int index = start; index < static_cast<int>(url.length()); ++index) {
-    const char c = url[index];
-    if (c == ':' || c == '/' || c == '?' || c == '#') {
+  int end = authorityEnd;
+  for (int index = start; index < authorityEnd; ++index) {
+    if (url[index] == ':') {
       end = index;
       break;
     }
@@ -43,7 +65,7 @@ String hostOf(const String& url) {
 }
 
 bool isLoopbackHost(const String& host) {
-  return host == "localhost" || host == "127.0.0.1" || host == "::1";
+  return host.equalsIgnoreCase("localhost") || host == "127.0.0.1" || host == "::1";
 }
 
 bool isAllowedUrl(const String& url, bool allowLocalHttp) {

@@ -91,7 +91,7 @@ bool hasMember(JsonObject object, const char* key) {
 }
 
 bool isLoopbackHost(const String& host) {
-  return host == "localhost" || host == "127.0.0.1" || host == "::1";
+  return host.equalsIgnoreCase("localhost") || host == "127.0.0.1" || host == "::1";
 }
 
 String stripPort(const String& hostPort) {
@@ -101,6 +101,14 @@ String stripPort(const String& hostPort) {
   }
   int colon = hostPort.indexOf(':');
   return colon >= 0 ? hostPort.substring(0, colon) : hostPort;
+}
+
+// Strips a userinfo prefix ("user:pass@") so a URL like
+// "http://127.0.0.1@evil.com" cannot spoof the loopback check while the
+// underlying HTTP client actually connects to the host after '@'.
+String stripUserinfo(const String& hostPort) {
+  int at = hostPort.lastIndexOf('@');
+  return at >= 0 ? hostPort.substring(at + 1) : hostPort;
 }
 
 bool validateHttpsUrl(const String& url, const String& path, bool allowLocalHttp,
@@ -132,7 +140,7 @@ bool validateHttpsUrl(const String& url, const String& path, bool allowLocalHttp
     return false;
   }
 
-  if (!isHttps && !isLoopbackHost(stripPort(hostPort))) {
+  if (!isHttps && !isLoopbackHost(stripPort(stripUserinfo(hostPort)))) {
     error = path + " local HTTP must use a loopback host";
     return false;
   }
