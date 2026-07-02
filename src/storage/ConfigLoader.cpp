@@ -6,6 +6,7 @@
 #include <SD.h>
 
 #include "storage/SdLayout.h"
+#include "storage/SecretStore.h"
 
 namespace cardputer_launcher {
 
@@ -39,6 +40,42 @@ bool readRequiredString(JsonVariantConst value, const String& path, String& out,
 bool validateVersion(JsonVariantConst value, const String& path, String& error) {
   if (!value.is<int>() || value.as<int>() != 1) {
     error = path + " must be 1";
+    return false;
+  }
+  return true;
+}
+
+bool resolveHeaderValue(JsonVariant value, SecretStore* secrets, String& resolved,
+                        String& error) {
+  resolved = "";
+
+  const char* literal = value.as<const char*>();
+  if (literal) {
+    resolved = literal;
+    return true;
+  }
+
+  if (!value.is<JsonObject>()) {
+    error = "webhook header invalid";
+    return false;
+  }
+
+  JsonObject object = value.as<JsonObject>();
+  if (object.size() != 1) {
+    error = "secretRef object invalid";
+    return false;
+  }
+  const char* ref = object["secretRef"] | "";
+  if (strlen(ref) == 0) {
+    error = "secretRef missing";
+    return false;
+  }
+  if (!secrets) {
+    error = "secret store unavailable";
+    return false;
+  }
+  if (!secrets->resolve(ref, resolved)) {
+    error = secrets->lastError();
     return false;
   }
   return true;
@@ -143,7 +180,8 @@ bool ConfigLoader::loadWifi(WifiSettings& settings) {
   return true;
 }
 
-bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands) {
+bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands,
+                                SecretStore* secrets) {
   commands.clear();
   if (!ensureSd(sdAvailable_, lastError_)) {
     return false;
@@ -241,14 +279,12 @@ bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands) {
           return false;
         }
 
-        String value;
-        if (!readRequiredString(kv.value(), path + ".headers." + key, value, lastError_)) {
+        Header header;
+        header.name = key;
+        if (!resolveHeaderValue(kv.value(), secrets, header.value, lastError_)) {
           commands.clear();
           return false;
         }
-        Header header;
-        header.name = key;
-        header.value = value;
         command.headers.push_back(header);
       }
     }

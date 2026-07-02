@@ -48,13 +48,14 @@ The initial `platformio.ini` uses `esp32-s3-devkitc-1` plus the M5Cardputer libr
 2. Copy the `sdcard/` directory contents to the root of a FAT-formatted SD card.
 3. Edit `settings.json` with your Wi-Fi SSID and password.
 4. Edit `apps/webhook_launcher/commands.json` with your own HTTPS webhook URLs.
-5. Build the firmware:
+5. Optional: if a command pack uses `secretRef`, copy `secrets.example.json` to `secrets.json` and fill local low-privilege values. Do not commit `secrets.json`.
+6. Build the firmware:
 
 ```bash
 pio run
 ```
 
-6. Upload to hardware:
+7. Upload to hardware:
 
 ```bash
 pio run --target upload
@@ -112,6 +113,8 @@ migrations. Existing v0.1 cards that still use `/apps/webhook_launcher.json`
 remain supported as a legacy compatibility path.
 
 Do not commit real secrets. The checked-in examples use placeholders only.
+
+For the safer provisioning prototype and sync controls, read [docs/SECRET_PROVISIONING.md](docs/SECRET_PROVISIONING.md).
 
 ### Config Schema Reference
 

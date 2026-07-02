@@ -30,7 +30,7 @@ void WebhookLauncherApp::onStart(AppContext& ctx) {
   menu_.clear();
   awaitingConfirm_ = false;
   preview_ = "";
-  configOk_ = ctx.config.loadWebhooks(commands_);
+  configOk_ = ctx.config.loadWebhooks(commands_, &ctx.secrets);
   if (!configOk_) {
     status_ = ctx.config.lastError();
     return;

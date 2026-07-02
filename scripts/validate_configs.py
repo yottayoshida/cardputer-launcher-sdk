@@ -33,6 +33,8 @@ REQUIRED_DIRECTORIES = [
     Path("cache"),
     Path("backups"),
 ]
+SECRET_REF_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
+SECRET_REF_KEY = "secretRef"
 
 
 def _require_object(value, path):
@@ -63,8 +65,13 @@ def validate_settings(data):
     wifi = _require_object(root.get("wifi"), "settings.wifi")
     ssid = _require_string(wifi.get("ssid"), "settings.wifi.ssid")
     password = _require_string(wifi.get("password"), "settings.wifi.password")
+    sync = _validate_sync_settings(root.get("sync", {}), "settings.sync")
 
-    return {"version": SUPPORTED_LAYOUT_VERSION, "wifi": {"ssid": ssid, "password": password}}
+    return {
+        "version": SUPPORTED_LAYOUT_VERSION,
+        "wifi": {"ssid": ssid, "password": password},
+        "sync": sync,
+    }
 
 
 def _validate_url(value, path):
@@ -77,14 +84,48 @@ def _validate_url(value, path):
     return url
 
 
+def _validate_sync_settings(value, path):
+    if value is None:
+        value = {}
+    sync = _require_object(value, path)
+    enabled = sync.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ValidationError(f"{path}.enabled must be true or false")
+
+    endpoint = sync.get("endpoint", "")
+    if endpoint:
+        endpoint = _validate_url(endpoint, f"{path}.endpoint")
+    elif enabled:
+        raise ValidationError(f"{path}.endpoint is required when sync is enabled")
+
+    return {"enabled": enabled, "endpoint": endpoint}
+
+
+def validate_secret_ref_value(value, path):
+    if isinstance(value, str):
+        return _require_string(value, path)
+
+    if isinstance(value, dict) and set(value.keys()) == {SECRET_REF_KEY}:
+        ref = _require_string(value.get(SECRET_REF_KEY), f"{path}.{SECRET_REF_KEY}")
+        if not SECRET_REF_PATTERN.fullmatch(ref):
+            raise ValidationError(
+                f"{path}.{SECRET_REF_KEY} must use letters, numbers, dots, "
+                "underscores, colons, or hyphens"
+            )
+        return {SECRET_REF_KEY: ref}
+
+    raise ValidationError(f"{path} must be a string or secretRef object")
+
+
 def _validate_headers(value, path):
     if value is None:
         return {}
     headers = _require_object(value, path)
     normalized = {}
     for key, header_value in headers.items():
-        normalized[_require_string(key, f"{path} key")] = _require_string(
-            header_value, f"{path}.{key}"
+        header_name = _require_string(key, f"{path} key")
+        normalized[header_name] = validate_secret_ref_value(
+            header_value, f"{path}.{header_name}"
         )
     return normalized
 
@@ -172,6 +213,30 @@ def redact_secret_like(value):
 
 def _format_path(path):
     return path.as_posix() if isinstance(path, Path) else str(path)
+
+
+def resolve_secret_refs(value, secrets):
+    if isinstance(value, dict) and set(value.keys()) == {SECRET_REF_KEY}:
+        ref = validate_secret_ref_value(value, "secret")[SECRET_REF_KEY]
+        secret = secrets.get(ref)
+        if not isinstance(secret, str) or not secret:
+            raise ValidationError(f"secret reference {ref} is not available")
+        return secret
+    if isinstance(value, dict):
+        return {key: resolve_secret_refs(item, secrets) for key, item in value.items()}
+    if isinstance(value, list):
+        return [resolve_secret_refs(item, secrets) for item in value]
+    return value
+
+
+def redact_known_secret_values(value, secrets):
+    redacted = str(value)
+    secret_values = {
+        secret for secret in secrets.values() if isinstance(secret, str) and secret
+    }
+    for secret in sorted(secret_values, key=len, reverse=True):
+        redacted = redacted.replace(secret, "[REDACTED]")
+    return redact_secret_like(redacted)
 
 
 def _load_json(path):

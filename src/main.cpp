@@ -20,6 +20,7 @@ Toast toast;
 Keyboard keyboard;
 ConfigLoader config;
 LogStore logs;
+SecretStore secrets;
 WifiManager wifi;
 HttpClient http;
 AppRegistry registry;
@@ -48,12 +49,13 @@ void setup() {
   config.setSdAvailable(sdAvailable);
   config.ensureLayout();
   logs.begin(sdAvailable);
+  secrets.begin(sdAvailable);
 
   registry.add(&webhookApp);
   registry.add(&logViewerApp);
   registry.add(&aboutApp);
 
-  AppContext ctx{display, config, logs, wifi, http, toast, sdAvailable};
+  AppContext ctx{display, config, logs, secrets, wifi, http, toast, sdAvailable};
   launcher.begin(ctx);
   launcher.render(ctx);
 }
@@ -61,7 +63,7 @@ void setup() {
 void loop() {
   M5Cardputer.update();
 
-  AppContext ctx{display, config, logs, wifi, http, toast, config.sdAvailable()};
+  AppContext ctx{display, config, logs, secrets, wifi, http, toast, config.sdAvailable()};
   InputEvent event = keyboard.poll();
   launcher.handleInput(ctx, event);
   launcher.tick(ctx);

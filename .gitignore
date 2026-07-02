@@ -4,8 +4,8 @@
 .DS_Store
 *.log
 *.tmp
+sdcard/secrets.json
 __pycache__/
 .pytest_cache/
 *.pyc
 compile_commands.json
-
