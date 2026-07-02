@@ -15,6 +15,7 @@ class Launcher {
 
   void begin(AppContext& ctx);
   void handleInput(AppContext& ctx, const InputEvent& event);
+  void tick(AppContext& ctx);
   void render(AppContext& ctx);
 
  private:
@@ -27,4 +28,3 @@ class Launcher {
 };
 
 }  // namespace cardputer_launcher
-

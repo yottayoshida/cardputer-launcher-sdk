@@ -63,7 +63,7 @@ void loop() {
   AppContext ctx{display, config, logs, wifi, http, toast, config.sdAvailable()};
   InputEvent event = keyboard.poll();
   launcher.handleInput(ctx, event);
+  launcher.tick(ctx);
   launcher.render(ctx);
   delay(30);
 }
-

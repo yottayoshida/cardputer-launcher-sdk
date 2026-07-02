@@ -8,6 +8,7 @@
 #include "input/Keyboard.h"
 #include "launcher/App.h"
 #include "launcher/AppContext.h"
+#include "launcher/AppManifest.h"
 #include "launcher/AppRegistry.h"
 #include "launcher/Launcher.h"
 #include "network/HttpClient.h"
@@ -19,4 +20,3 @@
 #include "ui/StatusBar.h"
 #include "ui/TextInput.h"
 #include "ui/Toast.h"
-
