@@ -60,6 +60,9 @@ pio run
 pio run --target upload
 ```
 
+CI runs the same host validation and firmware build checks on pull requests.
+See [docs/CI.md](docs/CI.md) for local reproduction commands and release tag checks.
+
 ## SD-Card Layout
 
 ```text

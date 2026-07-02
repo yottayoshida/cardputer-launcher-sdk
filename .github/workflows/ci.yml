@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    name: Host tests and config validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Python unit tests
+        run: python3 -m unittest discover -s tests
+
+      - name: Validate sample SD-card config
+        run: python3 scripts/validate_configs.py
+
+  docs-and-secrets:
+    name: Docs links and secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check local documentation links
+        run: python3 scripts/check_docs_links.py
+
+      - name: Run high-confidence secret scan
+        run: python3 scripts/scan_secrets.py
+
+  firmware-build:
+    name: PlatformIO firmware build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO dependencies and build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Install PlatformIO
+        run: python3 -m pip install --upgrade platformio
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Upload firmware build outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-adv-firmware
+          path: |
+            .pio/build/cardputer_adv/firmware.*
+            .pio/build/cardputer_adv/*.bin
+            .pio/build/cardputer_adv/*.elf
+            .pio/build/cardputer_adv/*.map
+          if-no-files-found: ignore
+
+  release-metadata:
+    name: Release metadata
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate release tag metadata
+        run: python3 scripts/validate_release_metadata.py "${GITHUB_REF_NAME}"

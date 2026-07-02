@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by Keep a Changelog, and this project uses semantic versioning once a stable public API exists.
 
+## [Unreleased]
+
+### Added
+
+- GitHub Actions CI for host tests, config validation, firmware build, docs link checks, secret scanning, and release metadata validation.
+- Local CI helper scripts and documentation for reproducing failures before opening a PR.
+
 ## [0.1.0] - 2026-06-29
 
 ### Added
