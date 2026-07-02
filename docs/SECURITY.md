@@ -29,6 +29,18 @@ Mitigations in v0.1:
 
 Prefer HTTPS endpoints. v0.1 does not implement a complete certificate trust store, certificate pinning, or per-command trust policies. Do not use v0.1 as the only control for sensitive production workflows.
 
+HTTPS is the default for Webhook Launcher commands. Plain HTTP is blocked unless a command sets `allowLocalHttp: true`, and that exception is limited to `localhost`, `127.0.0.1`, or `[::1]` for local development.
+
+Transport hardening limits blocking and data exposure:
+
+- The HTTP client sets a finite connect timeout and read timeout.
+- GET transport failures are retried once.
+- POST requests are not retried automatically.
+- Request bodies are limited to 2048 bytes.
+- Response previews are limited to 160 bytes before display or logging.
+
+TLS limitations remain important: the current firmware uses the Arduino HTTP stack and does not provide application-level certificate pinning, custom CA provisioning, or per-command trust anchors. Future v1.0 work should add certificate pinning or managed trust-anchor options after hardware Wi-Fi validation.
+
 ## Issue #10 Threats
 
 - lost SD card: `/secrets.json`, command packs, and logs are readable by anyone with the card.

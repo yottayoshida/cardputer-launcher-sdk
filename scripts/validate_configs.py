@@ -35,6 +35,8 @@ REQUIRED_DIRECTORIES = [
 ]
 SECRET_REF_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 SECRET_REF_KEY = "secretRef"
+MAX_REQUEST_BODY_BYTES = 2048
+LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def _require_object(value, path):
@@ -74,10 +76,15 @@ def validate_settings(data):
     }
 
 
-def _validate_url(value, path):
+def _validate_url(value, path, allow_local_http=False):
     url = _require_string(value, path)
     parsed = urlparse(url)
-    if parsed.scheme != "https":
+    if parsed.scheme == "http":
+        if not allow_local_http:
+            raise ValidationError(f"{path} must use https")
+        if parsed.hostname not in LOCAL_HTTP_HOSTS:
+            raise ValidationError(f"{path} local HTTP must use a loopback host")
+    elif parsed.scheme != "https":
         raise ValidationError(f"{path} must use https")
     if not parsed.netloc:
         raise ValidationError(f"{path} must include a host")
@@ -134,6 +141,11 @@ def _validate_json_body(value, path):
     if value is None:
         return None
     if isinstance(value, (dict, list, str, int, float, bool)) or value is None:
+        body_bytes = len(json.dumps(value, separators=(",", ":")).encode("utf-8"))
+        if body_bytes > MAX_REQUEST_BODY_BYTES:
+            raise ValidationError(
+                f"{path} must be at most {MAX_REQUEST_BODY_BYTES} bytes"
+            )
         return value
     raise ValidationError(f"{path} must be a JSON value")
 
@@ -154,7 +166,12 @@ def validate_webhook_config(data):
         method = _require_string(command.get("method"), f"{path}.method").upper()
         if method not in {"GET", "POST"}:
             raise ValidationError(f"{path}.method must be GET or POST")
-        url = _validate_url(command.get("url"), f"{path}.url")
+        allow_local_http = command.get("allowLocalHttp", False)
+        if not isinstance(allow_local_http, bool):
+            raise ValidationError(f"{path}.allowLocalHttp must be true or false")
+        url = _validate_url(
+            command.get("url"), f"{path}.url", allow_local_http=allow_local_http
+        )
         confirm = command.get("confirm", False)
         if not isinstance(confirm, bool):
             raise ValidationError(f"{path}.confirm must be true or false")
@@ -168,6 +185,7 @@ def validate_webhook_config(data):
                 "name": name,
                 "method": method,
                 "url": url,
+                "allowLocalHttp": allow_local_http,
                 "confirm": confirm,
                 "headers": headers,
                 "body": body,

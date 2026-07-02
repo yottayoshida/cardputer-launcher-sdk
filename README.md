@@ -112,6 +112,8 @@ and `backups/` is reserved for copies made before manual edits or future
 migrations. Existing v0.1 cards that still use `/apps/webhook_launcher.json`
 remain supported as a legacy compatibility path.
 
+Webhook URLs use HTTPS by default. For local development only, a command may set `allowLocalHttp: true` when targeting `localhost`, `127.0.0.1`, or `[::1]`. For safety, request bodies are limited to 2048 bytes and response previews are limited to 160 bytes before display or logging.
+
 Do not commit real secrets. The checked-in examples use placeholders only.
 
 For the safer provisioning prototype and sync controls, read [docs/SECRET_PROVISIONING.md](docs/SECRET_PROVISIONING.md).
