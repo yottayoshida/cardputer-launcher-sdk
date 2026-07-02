@@ -6,6 +6,7 @@
 #include "network/WifiManager.h"
 #include "storage/ConfigLoader.h"
 #include "storage/LogStore.h"
+#include "storage/SecretStore.h"
 #include "ui/DisplayPort.h"
 #include "ui/Toast.h"
 
@@ -15,6 +16,7 @@ struct AppContext {
   DisplayPort& display;
   ConfigLoader& config;
   LogStore& logs;
+  SecretStore& secrets;
   WifiManager& wifi;
   HttpClient& http;
   Toast& toast;
@@ -22,4 +24,3 @@ struct AppContext {
 };
 
 }  // namespace cardputer_launcher
-

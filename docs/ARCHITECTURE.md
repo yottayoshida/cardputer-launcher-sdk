@@ -74,7 +74,9 @@ directories when the SD card is available. It creates `/apps`,
 `/apps/webhook_launcher`, `/logs`, `/cache`, and `/backups`, but it does not
 create settings.json, command packs, or other secret-bearing user files.
 Put another way, firmware does not create settings.json.
-`LogStore` is the only place that writes log records and applies log redaction.
+`SecretStore` resolves the issue #10 prototype `secretRef` values from
+`/secrets.json`. `LogStore` is the only place that writes log records and
+applies log redaction.
 
 The v1.0 app-pack path for Webhook Launcher is
 `/apps/webhook_launcher/commands.json`, with

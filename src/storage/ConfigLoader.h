@@ -7,6 +7,8 @@
 
 namespace cardputer_launcher {
 
+class SecretStore;
+
 struct WifiSettings {
   String ssid;
   String password;
@@ -32,7 +34,7 @@ class ConfigLoader {
   bool sdAvailable() const;
   bool ensureLayout();
   bool loadWifi(WifiSettings& settings);
-  bool loadWebhooks(std::vector<WebhookCommand>& commands);
+  bool loadWebhooks(std::vector<WebhookCommand>& commands, SecretStore* secrets = nullptr);
   const String& lastError() const;
 
  private:
