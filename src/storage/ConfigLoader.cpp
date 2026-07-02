@@ -5,6 +5,8 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 
+#include "storage/SdLayout.h"
+
 namespace cardputer_launcher {
 
 namespace {
@@ -80,11 +82,21 @@ bool validateHttpsUrl(const String& url, const String& path, String& error) {
   return true;
 }
 
+File openWebhookConfig() {
+  File appPack = SD.open(kSdWebhookCommandsPath, FILE_READ);
+  if (appPack) {
+    return appPack;
+  }
+  return SD.open(kSdLegacyWebhookConfigPath, FILE_READ);
+}
+
 }  // namespace
 
 void ConfigLoader::setSdAvailable(bool available) { sdAvailable_ = available; }
 
 bool ConfigLoader::sdAvailable() const { return sdAvailable_; }
+
+bool ConfigLoader::ensureLayout() { return ensureSdLayout(sdAvailable_, lastError_); }
 
 bool ConfigLoader::loadWifi(WifiSettings& settings) {
   if (!ensureSd(sdAvailable_, lastError_)) {
@@ -137,7 +149,7 @@ bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands) {
     return false;
   }
 
-  File file = SD.open("/apps/webhook_launcher.json", FILE_READ);
+  File file = openWebhookConfig();
   if (!file) {
     lastError_ = "webhook config missing";
     return false;

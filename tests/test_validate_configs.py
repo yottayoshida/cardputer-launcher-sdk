@@ -6,6 +6,7 @@ from pathlib import Path
 from scripts.validate_configs import (
     ValidationError,
     redact_secret_like,
+    validate_root,
     validate_settings,
     validate_webhook_config,
 )
@@ -15,6 +16,45 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def _write_valid_sd_tree(self, root):
+        (root / "apps/webhook_launcher").mkdir(parents=True)
+        (root / "logs").mkdir()
+        (root / "cache").mkdir()
+        (root / "backups").mkdir()
+        (root / "settings.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "wifi": {"ssid": "ssid", "password": "password"},
+                }
+            )
+        )
+        (root / "apps/webhook_launcher/manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "id": "webhook_launcher",
+                    "name": "Webhook Launcher",
+                    "version": "1.0.0",
+                    "config": "commands.json",
+                }
+            )
+        )
+        (root / "apps/webhook_launcher/commands.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "commands": [
+                        {
+                            "name": "Ping",
+                            "method": "GET",
+                            "url": "https://example.com/ping",
+                        }
+                    ],
+                }
+            )
+        )
+
     def test_sample_settings_are_valid(self):
         data = json.loads((REPO_ROOT / "sdcard/settings.json").read_text())
 
@@ -41,8 +81,17 @@ class ConfigValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "settings.version must be 1"):
             validate_settings(data)
 
+    def test_sample_sd_tree_validates_with_layout_metadata(self):
+        result = validate_root(REPO_ROOT / "sdcard")
+
+        self.assertEqual(result["layout"]["version"], 1)
+        self.assertEqual(result["apps"]["webhook_launcher"]["manifest"]["id"], "webhook_launcher")
+        self.assertEqual(len(result["apps"]["webhook_launcher"]["commands"]["commands"]), 2)
+
     def test_sample_webhook_config_is_valid(self):
-        data = json.loads((REPO_ROOT / "sdcard/apps/webhook_launcher.json").read_text())
+        data = json.loads(
+            (REPO_ROOT / "sdcard/apps/webhook_launcher/commands.json").read_text()
+        )
 
         result = validate_webhook_config(data)
 
@@ -194,6 +243,94 @@ class ConfigValidationTests(unittest.TestCase):
 
             self.assertEqual(validate_settings(settings)["wifi"]["ssid"], "ssid")
             self.assertEqual(validate_webhook_config(hooks)["commands"][0]["name"], "Ping")
+
+    def test_malformed_manifest_reports_file_and_field(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_valid_sd_tree(root)
+            (root / "apps/webhook_launcher/manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "name": "Webhook Launcher",
+                        "version": "1.0.0",
+                        "config": "commands.json",
+                    }
+                )
+            )
+
+            with self.assertRaises(ValidationError) as raised:
+                validate_root(root)
+
+        message = str(raised.exception)
+        self.assertIn("apps/webhook_launcher/manifest.json", message)
+        self.assertIn("app manifest.id", message)
+
+    def test_malformed_command_pack_reports_file_and_field(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_valid_sd_tree(root)
+            (root / "apps/webhook_launcher/commands.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "commands": [
+                            {
+                                "name": "Unsafe",
+                                "method": "GET",
+                                "url": "http://example.com/ping",
+                            }
+                        ],
+                    }
+                )
+            )
+
+            with self.assertRaises(ValidationError) as raised:
+                validate_root(root)
+
+        message = str(raised.exception)
+        self.assertIn("apps/webhook_launcher/commands.json", message)
+        self.assertIn("commands[0].url", message)
+
+    def test_webhook_manifest_config_must_match_firmware_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_valid_sd_tree(root)
+            (root / "apps/webhook_launcher/manifest.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "id": "webhook_launcher",
+                        "name": "Webhook Launcher",
+                        "version": "1.0.0",
+                        "config": "alternate.json",
+                    }
+                )
+            )
+            (root / "apps/webhook_launcher/alternate.json").write_text(
+                (root / "apps/webhook_launcher/commands.json").read_text()
+            )
+
+            with self.assertRaises(ValidationError) as raised:
+                validate_root(root)
+
+        message = str(raised.exception)
+        self.assertIn("apps/webhook_launcher/manifest.json", message)
+        self.assertIn("app manifest.config", message)
+        self.assertIn("commands.json", message)
+
+    def test_partial_write_residue_fails_validation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_valid_sd_tree(root)
+            (root / "apps/webhook_launcher/commands.json.tmp").write_text("{}")
+
+            with self.assertRaises(ValidationError) as raised:
+                validate_root(root)
+
+        message = str(raised.exception)
+        self.assertIn("partial write residue", message)
+        self.assertIn("apps/webhook_launcher/commands.json.tmp", message)
 
 
 if __name__ == "__main__":

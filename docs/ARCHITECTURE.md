@@ -68,7 +68,19 @@ launcher menu
 
 ## Storage Boundary
 
-`ConfigLoader` is the only place that knows the current SD-card config paths. `LogStore` is the only place that writes log records and applies log redaction.
+`ConfigLoader` is the only place that knows the current SD-card config paths.
+`SdLayout` owns the v1.0 directory contract and creates missing non-secret
+directories when the SD card is available. It creates `/apps`,
+`/apps/webhook_launcher`, `/logs`, `/cache`, and `/backups`, but it does not
+create settings.json, command packs, or other secret-bearing user files.
+Put another way, firmware does not create settings.json.
+`LogStore` is the only place that writes log records and applies log redaction.
+
+The v1.0 app-pack path for Webhook Launcher is
+`/apps/webhook_launcher/commands.json`, with
+`/apps/webhook_launcher/manifest.json` describing the pack. The older
+`/apps/webhook_launcher.json` file remains a legacy compatibility path so
+existing v0.1 SD cards can still boot while users migrate.
 
 ## Network Boundary
 

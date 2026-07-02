@@ -13,6 +13,9 @@ The format is inspired by Keep a Changelog, and this project uses semantic versi
 - Hardware acceptance checklist and v1.0 evidence gate for Cardputer ADV release certification.
 - App manifest metadata draft with permission and capability vocabulary for built-in apps.
 - Lightweight lifecycle hooks for focus, blur, tick, suspend, and resume foundations.
+- SD-card app-pack layout for Webhook Launcher with manifest and commands files.
+- whole-tree validator coverage for app packs, schema versions, runtime directories, and partial-write residue.
+- Firmware recovery helper for creating missing non-secret SD-card directories.
 
 ### Changed
 

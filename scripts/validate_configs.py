@@ -19,6 +19,20 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)(authorization:\s*bearer\s+)[^\s,}]+"),
     re.compile(r"(?i)\b(token|secret|password|api[_-]?key|key)=([^&\s,}]+)"),
 ]
+APP_ID_PATTERN = re.compile(r"^[a-z0-9_]+$")
+SUPPORTED_LAYOUT_VERSION = 1
+WEBHOOK_APP_ID = "webhook_launcher"
+WEBHOOK_PACK_DIR = Path("apps") / WEBHOOK_APP_ID
+WEBHOOK_COMMANDS_PATH = WEBHOOK_PACK_DIR / "commands.json"
+WEBHOOK_MANIFEST_PATH = WEBHOOK_PACK_DIR / "manifest.json"
+LEGACY_WEBHOOK_PATH = Path("apps") / "webhook_launcher.json"
+REQUIRED_DIRECTORIES = [
+    Path("apps"),
+    WEBHOOK_PACK_DIR,
+    Path("logs"),
+    Path("cache"),
+    Path("backups"),
+]
 
 
 def _require_object(value, path):
@@ -34,8 +48,12 @@ def _require_string(value, path):
 
 
 def _require_version(value, path):
-    if isinstance(value, bool) or not isinstance(value, int) or value != 1:
-        raise ValidationError(f"{path} must be 1")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value != SUPPORTED_LAYOUT_VERSION
+    ):
+        raise ValidationError(f"{path} must be {SUPPORTED_LAYOUT_VERSION}")
     return value
 
 
@@ -46,7 +64,7 @@ def validate_settings(data):
     ssid = _require_string(wifi.get("ssid"), "settings.wifi.ssid")
     password = _require_string(wifi.get("password"), "settings.wifi.password")
 
-    return {"version": 1, "wifi": {"ssid": ssid, "password": password}}
+    return {"version": SUPPORTED_LAYOUT_VERSION, "wifi": {"ssid": ssid, "password": password}}
 
 
 def _validate_url(value, path):
@@ -118,6 +136,33 @@ def validate_webhook_config(data):
     return {"version": 1, "commands": normalized_commands}
 
 
+def validate_app_manifest(data):
+    root = _require_object(data, "app manifest")
+    schema_version = root.get("schema_version")
+    if schema_version != SUPPORTED_LAYOUT_VERSION:
+        raise ValidationError(
+            f"app manifest.schema_version must be {SUPPORTED_LAYOUT_VERSION}"
+        )
+
+    app_id = _require_string(root.get("id"), "app manifest.id")
+    if not APP_ID_PATTERN.fullmatch(app_id):
+        raise ValidationError("app manifest.id must use lowercase letters, digits, or _")
+
+    name = _require_string(root.get("name"), "app manifest.name")
+    version = _require_string(root.get("version"), "app manifest.version")
+    config = _require_string(root.get("config"), "app manifest.config")
+    if config.startswith("/") or "/" in config or "\\" in config:
+        raise ValidationError("app manifest.config must be a file name in the app directory")
+
+    return {
+        "schema_version": SUPPORTED_LAYOUT_VERSION,
+        "id": app_id,
+        "name": name,
+        "version": version,
+        "config": config,
+    }
+
+
 def redact_secret_like(value):
     redacted = str(value)
     redacted = SECRET_PATTERNS[0].sub(r"\1[REDACTED]", redacted)
@@ -125,21 +170,100 @@ def redact_secret_like(value):
     return redacted
 
 
+def _format_path(path):
+    return path.as_posix() if isinstance(path, Path) else str(path)
+
+
 def _load_json(path):
     try:
         with path.open() as handle:
             return json.load(handle)
     except FileNotFoundError as exc:
-        raise ValidationError(f"missing file: {path}") from exc
+        raise ValidationError(f"missing file: {_format_path(path)}") from exc
     except json.JSONDecodeError as exc:
-        raise ValidationError(f"invalid JSON in {path}: {exc}") from exc
+        raise ValidationError(f"invalid JSON in {_format_path(path)}: {exc}") from exc
+
+
+def _validate_json_file(root, relative_path, validator):
+    path = root / relative_path
+    try:
+        return validator(_load_json(path))
+    except ValidationError as exc:
+        raise ValidationError(f"{relative_path.as_posix()}: {exc}") from exc
+
+
+def _detect_partial_writes(root):
+    if not root.exists():
+        return
+    for path in root.rglob("*"):
+        if path.is_file() and (
+            path.name.endswith(".tmp")
+            or path.name.endswith(".partial")
+            or path.name.endswith(".new")
+        ):
+            try:
+                relative = path.relative_to(root)
+            except ValueError:
+                relative = path
+            raise ValidationError(f"partial write residue: {relative.as_posix()}")
+
+
+def _require_directories(root):
+    for relative_path in REQUIRED_DIRECTORIES:
+        if not (root / relative_path).is_dir():
+            raise ValidationError(f"missing directory: {relative_path.as_posix()}")
+
+
+def _validate_webhook_app_pack(root):
+    manifest = _validate_json_file(root, WEBHOOK_MANIFEST_PATH, validate_app_manifest)
+    if manifest["id"] != WEBHOOK_APP_ID:
+        raise ValidationError(
+            f"{WEBHOOK_MANIFEST_PATH.as_posix()}: app manifest.id must be {WEBHOOK_APP_ID}"
+        )
+    if manifest["config"] != WEBHOOK_COMMANDS_PATH.name:
+        raise ValidationError(
+            f"{WEBHOOK_MANIFEST_PATH.as_posix()}: "
+            f"app manifest.config must be {WEBHOOK_COMMANDS_PATH.name}"
+        )
+
+    commands = _validate_json_file(root, WEBHOOK_COMMANDS_PATH, validate_webhook_config)
+    return {"manifest": manifest, "commands": commands}
+
+
+def _validate_legacy_webhook_app(root):
+    commands = _validate_json_file(root, LEGACY_WEBHOOK_PATH, validate_webhook_config)
+    manifest = {
+        "schema_version": SUPPORTED_LAYOUT_VERSION,
+        "id": WEBHOOK_APP_ID,
+        "name": "Webhook Launcher",
+        "version": "legacy",
+        "config": LEGACY_WEBHOOK_PATH.name,
+        "legacy": True,
+    }
+    return {"manifest": manifest, "commands": commands}
 
 
 def validate_root(root):
     root = Path(root)
-    settings = validate_settings(_load_json(root / "settings.json"))
-    webhooks = validate_webhook_config(_load_json(root / "apps/webhook_launcher.json"))
-    return {"settings": settings, "webhooks": webhooks}
+    _detect_partial_writes(root)
+    _require_directories(root)
+
+    settings = _validate_json_file(root, Path("settings.json"), validate_settings)
+    if (root / WEBHOOK_MANIFEST_PATH).exists() or (root / WEBHOOK_COMMANDS_PATH).exists():
+        webhook_app = _validate_webhook_app_pack(root)
+    elif (root / LEGACY_WEBHOOK_PATH).exists():
+        webhook_app = _validate_legacy_webhook_app(root)
+    else:
+        raise ValidationError(
+            "missing app pack: apps/webhook_launcher/manifest.json and commands.json"
+        )
+
+    return {
+        "layout": {"version": SUPPORTED_LAYOUT_VERSION},
+        "settings": settings,
+        "apps": {WEBHOOK_APP_ID: webhook_app},
+        "webhooks": webhook_app["commands"],
+    }
 
 
 def main(argv=None):

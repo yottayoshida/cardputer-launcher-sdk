@@ -30,6 +30,7 @@ class ConfigLoader {
  public:
   void setSdAvailable(bool available);
   bool sdAvailable() const;
+  bool ensureLayout();
   bool loadWifi(WifiSettings& settings);
   bool loadWebhooks(std::vector<WebhookCommand>& commands);
   const String& lastError() const;
@@ -40,4 +41,3 @@ class ConfigLoader {
 };
 
 }  // namespace cardputer_launcher
-
