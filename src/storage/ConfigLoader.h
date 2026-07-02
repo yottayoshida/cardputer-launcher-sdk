@@ -23,6 +23,7 @@ struct WebhookCommand {
   String name;
   String method;
   String url;
+  bool allowLocalHttp = false;
   bool confirm = false;
   std::vector<Header> headers;
   String bodyJson;

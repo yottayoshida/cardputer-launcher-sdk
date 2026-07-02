@@ -119,6 +119,7 @@ void WebhookLauncherApp::execute(AppContext& ctx, const WebhookCommand& command)
   HttpRequest request;
   request.method = command.method;
   request.url = command.url;
+  request.allowLocalHttp = command.allowLocalHttp;
   request.headers = command.headers;
   request.body = command.bodyJson;
 

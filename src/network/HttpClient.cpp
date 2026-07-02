@@ -8,55 +8,158 @@ namespace cardputer_launcher {
 
 namespace {
 
+constexpr uint16_t kConnectTimeoutMs = 5000;
+constexpr uint16_t kReadTimeoutMs = 5000;
+constexpr size_t kMaxRequestBodyBytes = 2048;
+constexpr size_t kMaxResponsePreviewBytes = 160;
+constexpr uint8_t kGetRetryCount = 1;
+
+String hostOf(const String& url) {
+  const int schemeEnd = url.indexOf("://");
+  if (schemeEnd < 0) {
+    return "";
+  }
+  int start = schemeEnd + 3;
+  const int urlLength = static_cast<int>(url.length());
+  if (start >= urlLength) {
+    return "";
+  }
+
+  int authorityEnd = urlLength;
+  for (int index = start; index < urlLength; ++index) {
+    const char c = url[index];
+    if (c == '/' || c == '?' || c == '#') {
+      authorityEnd = index;
+      break;
+    }
+  }
+
+  // A "user:pass@" userinfo prefix must not be mistaken for the host: the
+  // underlying HTTP client connects to whatever follows the last '@'.
+  for (int index = authorityEnd - 1; index >= start; --index) {
+    if (url[index] == '@') {
+      start = index + 1;
+      break;
+    }
+  }
+  if (start >= authorityEnd) {
+    return "";
+  }
+
+  if (url[start] == '[') {
+    const int end = url.indexOf(']', start + 1);
+    if (end < 0 || end > authorityEnd) {
+      return "";
+    }
+    return url.substring(start + 1, end);
+  }
+
+  int end = authorityEnd;
+  for (int index = start; index < authorityEnd; ++index) {
+    if (url[index] == ':') {
+      end = index;
+      break;
+    }
+  }
+  return url.substring(start, end);
+}
+
+bool isLoopbackHost(const String& host) {
+  return host.equalsIgnoreCase("localhost") || host == "127.0.0.1" || host == "::1";
+}
+
+bool isAllowedUrl(const String& url, bool allowLocalHttp) {
+  if (url.startsWith("https://")) {
+    return true;
+  }
+  if (!url.startsWith("http://")) {
+    return false;
+  }
+  return allowLocalHttp && isLoopbackHost(hostOf(url));
+}
+
 String previewOf(const String& value) {
-  if (value.length() <= 160) {
+  if (value.length() <= kMaxResponsePreviewBytes) {
     return value;
   }
-  return value.substring(0, 160) + "...";
+  return value.substring(0, kMaxResponsePreviewBytes) + "...";
+}
+
+HttpErrorKind classifyTransportError(const String& error) {
+  String lowered = error;
+  lowered.toLowerCase();
+  if (lowered.indexOf("timeout") >= 0 || lowered.indexOf("timed out") >= 0) {
+    return HttpErrorKind::Timeout;
+  }
+  return HttpErrorKind::Network;
+}
+
+int sendOnce(HTTPClient& http, const HttpRequest& request) {
+  if (request.method == "POST") {
+    return http.POST(request.body);
+  }
+  return http.GET();
 }
 
 }  // namespace
 
 HttpResponse HttpClient::send(const HttpRequest& request) {
   HttpResponse response;
-  HTTPClient http;
 
-  if (!request.url.startsWith("https://") && !request.url.startsWith("http://")) {
-    response.error = "unsupported URL";
+  if (!isAllowedUrl(request.url, request.allowLocalHttp)) {
+    response.errorKind = HttpErrorKind::Policy;
+    response.error = "URL policy blocked";
     return response;
   }
 
-  if (!http.begin(request.url)) {
-    response.error = "HTTP begin failed";
+  if (request.method == "POST" && request.body.length() > kMaxRequestBodyBytes) {
+    response.errorKind = HttpErrorKind::Limit;
+    response.error = "request body too large";
     return response;
   }
 
-  for (const Header& header : request.headers) {
-    http.addHeader(header.name, header.value);
-  }
+  const uint8_t retries = request.method == "GET" ? kGetRetryCount : 0;
+  for (uint8_t attempt = 0; attempt <= retries; ++attempt) {
+    HTTPClient http;
+    http.setConnectTimeout(kConnectTimeoutMs);
+    http.setTimeout(kReadTimeoutMs);
 
-  int status = 0;
-  if (request.method == "POST") {
-    status = http.POST(request.body);
-  } else {
-    status = http.GET();
-  }
+    if (!http.begin(request.url)) {
+      response.errorKind = HttpErrorKind::Network;
+      response.error = "HTTP begin failed";
+      return response;
+    }
 
-  response.statusCode = status;
-  if (status <= 0) {
-    response.error = http.errorToString(status);
+    for (const Header& header : request.headers) {
+      http.addHeader(header.name, header.value);
+    }
+
+    const int status = sendOnce(http, request);
+    response.statusCode = status;
+    if (status <= 0) {
+      const String errorText = http.errorToString(status);
+      http.end();
+      if (attempt < retries) {
+        continue;
+      }
+      response.errorKind = classifyTransportError(errorText);
+      response.error = errorText;
+      return response;
+    }
+
+    response.preview = previewOf(http.getString());
+    response.ok = status >= 200 && status < 300;
+    if (!response.ok) {
+      response.errorKind = HttpErrorKind::HttpStatus;
+      response.error = "HTTP " + String(status);
+    }
     http.end();
     return response;
   }
 
-  response.preview = previewOf(http.getString());
-  response.ok = status >= 200 && status < 300;
-  if (!response.ok) {
-    response.error = "HTTP " + String(status);
-  }
-  http.end();
+  response.errorKind = HttpErrorKind::Network;
+  response.error = "HTTP request failed";
   return response;
 }
 
 }  // namespace cardputer_launcher
-

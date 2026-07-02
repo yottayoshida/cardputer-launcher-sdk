@@ -9,9 +9,19 @@
 
 namespace cardputer_launcher {
 
+enum class HttpErrorKind {
+  None,
+  Policy,
+  Limit,
+  Network,
+  Timeout,
+  HttpStatus,
+};
+
 struct HttpRequest {
   String method;
   String url;
+  bool allowLocalHttp = false;
   std::vector<Header> headers;
   String body;
 };
@@ -19,6 +29,7 @@ struct HttpRequest {
 struct HttpResponse {
   bool ok = false;
   int statusCode = 0;
+  HttpErrorKind errorKind = HttpErrorKind::None;
   String error;
   String preview;
 };
@@ -29,4 +40,3 @@ class HttpClient {
 };
 
 }  // namespace cardputer_launcher
-

@@ -17,6 +17,7 @@ The format is inspired by Keep a Changelog, and this project uses semantic versi
 - whole-tree validator coverage for app packs, schema versions, runtime directories, and partial-write residue.
 - Firmware recovery helper for creating missing non-secret SD-card directories.
 - Safer secret provisioning design, header `secretRef` prototype, and disabled-by-default sync settings validation.
+- HTTP transport hardening with HTTPS policy, local-development HTTP exceptions, timeouts, bounded GET retry, request body limits, response preview limits, and error classification.
 
 ### Changed
 

@@ -90,13 +90,36 @@ bool hasMember(JsonObject object, const char* key) {
   return false;
 }
 
-bool validateHttpsUrl(const String& url, const String& path, String& error) {
-  if (!url.startsWith("https://")) {
+bool isLoopbackHost(const String& host) {
+  return host.equalsIgnoreCase("localhost") || host == "127.0.0.1" || host == "::1";
+}
+
+String stripPort(const String& hostPort) {
+  if (hostPort.startsWith("[")) {
+    int end = hostPort.indexOf(']');
+    return end >= 0 ? hostPort.substring(1, end) : hostPort;
+  }
+  int colon = hostPort.indexOf(':');
+  return colon >= 0 ? hostPort.substring(0, colon) : hostPort;
+}
+
+// Strips a userinfo prefix ("user:pass@") so a URL like
+// "http://127.0.0.1@evil.com" cannot spoof the loopback check while the
+// underlying HTTP client actually connects to the host after '@'.
+String stripUserinfo(const String& hostPort) {
+  int at = hostPort.lastIndexOf('@');
+  return at >= 0 ? hostPort.substring(at + 1) : hostPort;
+}
+
+bool validateHttpsUrl(const String& url, const String& path, bool allowLocalHttp,
+                       String& error) {
+  bool isHttps = url.startsWith("https://");
+  if (!isHttps && !(allowLocalHttp && url.startsWith("http://"))) {
     error = path + " must use https";
     return false;
   }
 
-  String hostAndPath = url.substring(8);
+  String hostAndPath = url.substring(isHttps ? 8 : 7);
   int slash = hostAndPath.indexOf('/');
   int query = hostAndPath.indexOf('?');
   int fragment = hostAndPath.indexOf('#');
@@ -110,10 +133,15 @@ bool validateHttpsUrl(const String& url, const String& path, String& error) {
   if (fragment >= 0 && fragment < end) {
     end = fragment;
   }
-  String host = hostAndPath.substring(0, end);
-  host.trim();
-  if (host.isEmpty()) {
+  String hostPort = hostAndPath.substring(0, end);
+  hostPort.trim();
+  if (hostPort.isEmpty()) {
     error = path + " must include a host";
+    return false;
+  }
+
+  if (!isHttps && !isLoopbackHost(stripPort(stripUserinfo(hostPort)))) {
+    error = path + " local HTTP must use a loopback host";
     return false;
   }
   return true;
@@ -249,7 +277,16 @@ bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands,
       return false;
     }
 
-    if (!validateHttpsUrl(command.url, path + ".url", lastError_)) {
+    if (hasMember(item, "allowLocalHttp")) {
+      if (!item["allowLocalHttp"].is<bool>()) {
+        lastError_ = path + ".allowLocalHttp must be true or false";
+        commands.clear();
+        return false;
+      }
+      command.allowLocalHttp = item["allowLocalHttp"].as<bool>();
+    }
+
+    if (!validateHttpsUrl(command.url, path + ".url", command.allowLocalHttp, lastError_)) {
       commands.clear();
       return false;
     }
