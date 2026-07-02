@@ -10,6 +10,7 @@ The format is inspired by Keep a Changelog, and this project uses semantic versi
 
 - GitHub Actions CI for host tests, config validation, firmware build, docs link checks, secret scanning, and release metadata validation.
 - Local CI helper scripts and documentation for reproducing failures before opening a PR.
+- Hardware acceptance checklist and v1.0 evidence gate for Cardputer ADV release certification.
 
 ## [0.1.0] - 2026-06-29
 
