@@ -6,7 +6,7 @@
 #include "network/WifiManager.h"
 #include "storage/ConfigLoader.h"
 #include "storage/LogStore.h"
-#include "storage/SecretStore.h"
+#include "storage/SecretProvider.h"
 #include "ui/DisplayPort.h"
 #include "ui/Toast.h"
 
@@ -16,7 +16,7 @@ struct AppContext {
   DisplayPort& display;
   ConfigLoader& config;
   LogStore& logs;
-  SecretStore& secrets;
+  SecretProvider& secrets;
   WifiManager& wifi;
   HttpClient& http;
   Toast& toast;

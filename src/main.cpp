@@ -20,7 +20,7 @@ Toast toast;
 Keyboard keyboard;
 ConfigLoader config;
 LogStore logs;
-SecretStore secrets;
+SdSecretProvider secrets;
 WifiManager wifi;
 HttpClient http;
 AppRegistry registry;

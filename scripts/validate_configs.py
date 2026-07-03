@@ -35,6 +35,11 @@ REQUIRED_DIRECTORIES = [
 ]
 SECRET_REF_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 SECRET_REF_KEY = "secretRef"
+
+
+def _is_valid_secret_ref_name(ref):
+    return bool(SECRET_REF_PATTERN.fullmatch(ref))
+
 MAX_REQUEST_BODY_BYTES = 2048
 LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1"}
 INPUT_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -69,7 +74,11 @@ def validate_settings(data):
     _require_version(root.get("version"), "settings.version")
     wifi = _require_object(root.get("wifi"), "settings.wifi")
     ssid = _require_string(wifi.get("ssid"), "settings.wifi.ssid")
-    password = _require_string(wifi.get("password"), "settings.wifi.password")
+    # Accepts a literal string (unchanged from earlier versions) or a
+    # {"secretRef": "<ref>"} object, mirroring header values.
+    password = validate_secret_ref_value(wifi.get("password"), "settings.wifi.password")
+    if isinstance(password, str) and not password.strip():
+        raise ValidationError("settings.wifi.password must be a non-empty string")
     sync = _validate_sync_settings(root.get("sync", {}), "settings.sync")
 
     return {
@@ -79,25 +88,35 @@ def validate_settings(data):
     }
 
 
-# Only the "input" namespace is implemented in this PR; "secret" and any
-# other namespace are reserved so a config that loads today keeps the same
-# meaning once secret-backed placeholders are implemented (see SECURITY.md).
-def _validate_placeholder_token(token, input_keys, path):
+# "input" is always implemented. "secret" is accepted only where
+# allow_secret is True (url and body; header text keeps the older
+# {"secretRef": ...} object syntax instead, see validate_secret_ref_value),
+# and only validates ref syntax here -- actual resolution happens firmware
+# side (or via --secrets-file below) so a config can be validated without a
+# real secrets file. Any other namespace is reserved so a config that loads
+# today keeps the same meaning once a new namespace is implemented (see
+# SECURITY.md).
+def _validate_placeholder_token(token, input_keys, path, allow_secret=False):
     dot = token.find(".")
     if dot < 0:
         raise ValidationError(f"{path} placeholder must be namespace.key")
     namespace = token[:dot]
     key = token[dot + 1 :]
-    if namespace != "input":
-        raise ValidationError(
-            f"{path} placeholder namespace '{namespace}' is reserved or unknown"
-        )
-    if key not in input_keys:
-        raise ValidationError(f"{path} references undefined input '{key}'")
-    return key
+    if namespace == "input":
+        if key not in input_keys:
+            raise ValidationError(f"{path} references undefined input '{key}'")
+        return key
+    if namespace == "secret" and allow_secret:
+        if not _is_valid_secret_ref_name(key):
+            raise ValidationError(
+                f"{path} secret ref must use letters, numbers, dots, underscores, "
+                "colons, or hyphens"
+            )
+        return key
+    raise ValidationError(f"{path} placeholder namespace '{namespace}' is reserved or unknown")
 
 
-def _validate_embedded_placeholders(text, input_keys, path):
+def _validate_embedded_placeholders(text, input_keys, path, allow_secret=False):
     search_from = 0
     while True:
         open_idx = text.find("{{", search_from)
@@ -106,23 +125,26 @@ def _validate_embedded_placeholders(text, input_keys, path):
         close_idx = text.find("}}", open_idx + 2)
         if close_idx < 0:
             raise ValidationError(f"{path} has an unterminated placeholder")
-        _validate_placeholder_token(text[open_idx + 2 : close_idx], input_keys, path)
+        _validate_placeholder_token(
+            text[open_idx + 2 : close_idx], input_keys, path, allow_secret
+        )
         search_from = close_idx + 2
 
 
 # Placeholders may appear anywhere at or after `authority_end` (the URL's
 # path/query/fragment), never in the scheme/userinfo/host/port, so a typed
-# value can never redirect a request to a different host.
+# value or a resolved secret can never redirect a request to a different
+# host.
 def _validate_url_placeholders(url, authority_end, input_keys, path):
     first_open = url.find("{{")
     if 0 <= first_open < authority_end:
         raise ValidationError(f"{path} placeholder not allowed before the host")
-    _validate_embedded_placeholders(url, input_keys, path)
+    _validate_embedded_placeholders(url, input_keys, path, allow_secret=True)
 
 
-# Body placeholders must occupy an entire JSON string value ("{{input.x}}")
-# so substitution is a single token replacement, not string concatenation
-# inside arbitrary JSON text.
+# Body placeholders must occupy an entire JSON string value ("{{input.x}}" or
+# "{{secret.x}}") so substitution is a single token replacement, not string
+# concatenation inside arbitrary JSON text.
 def _validate_body_placeholders(value, input_keys, path):
     if isinstance(value, str):
         if "{{" not in value and "}}" not in value:
@@ -130,7 +152,7 @@ def _validate_body_placeholders(value, input_keys, path):
         inner = value[2:-2] if value.startswith("{{") and value.endswith("}}") else None
         if inner is None or "{{" in inner or "}}" in inner:
             raise ValidationError(f"{path} placeholder must be the entire JSON string value")
-        _validate_placeholder_token(inner, input_keys, path)
+        _validate_placeholder_token(inner, input_keys, path, allow_secret=True)
     elif isinstance(value, dict):
         for key, item in value.items():
             if "{{" in key or "}}" in key:
@@ -184,7 +206,7 @@ def validate_secret_ref_value(value, path):
 
     if isinstance(value, dict) and set(value.keys()) == {SECRET_REF_KEY}:
         ref = _require_string(value.get(SECRET_REF_KEY), f"{path}.{SECRET_REF_KEY}")
-        if not SECRET_REF_PATTERN.fullmatch(ref):
+        if not _is_valid_secret_ref_name(ref):
             raise ValidationError(
                 f"{path}.{SECRET_REF_KEY} must use letters, numbers, dots, "
                 "underscores, colons, or hyphens"
@@ -431,13 +453,42 @@ def _format_path(path):
     return path.as_posix() if isinstance(path, Path) else str(path)
 
 
+# Mirrors SecretProvider::kMinSecretLength / hasControlCharacter in
+# SdSecretProvider.cpp: a resolved secret too short to redact reliably, or
+# containing a control character, is rejected everywhere a secret is
+# resolved, not just in the firmware.
+MIN_SECRET_LENGTH = 6
+
+
+def _check_resolved_secret_policy(ref, secret):
+    # Firmware measures length in bytes (Arduino String::length()), not
+    # codepoints, so a multi-byte UTF-8 secret must be measured the same way
+    # here or a short non-ASCII secret could pass host validation and then
+    # be rejected by firmware (or vice versa).
+    if len(secret.encode("utf-8")) < MIN_SECRET_LENGTH:
+        raise ValidationError(
+            f"secret ref '{ref}' is too short (must be at least {MIN_SECRET_LENGTH} bytes)"
+        )
+    if any(ord(char) < 0x20 for char in secret):
+        raise ValidationError(f"secret ref '{ref}' contains a control character")
+
+
+def _resolve_and_check_secret(ref, secrets):
+    """Looks up `ref` in `secrets` and applies the same policy firmware
+    enforces at resolve time (available, minimum byte length, no control
+    characters). Shared by both secretRef syntaxes -- the older
+    {"secretRef": ...} object form and the {{secret.<ref>}} template form."""
+    secret = secrets.get(ref)
+    if not isinstance(secret, str) or not secret:
+        raise ValidationError(f"secret reference {ref} is not available")
+    _check_resolved_secret_policy(ref, secret)
+    return secret
+
+
 def resolve_secret_refs(value, secrets):
     if isinstance(value, dict) and set(value.keys()) == {SECRET_REF_KEY}:
         ref = validate_secret_ref_value(value, "secret")[SECRET_REF_KEY]
-        secret = secrets.get(ref)
-        if not isinstance(secret, str) or not secret:
-            raise ValidationError(f"secret reference {ref} is not available")
-        return secret
+        return _resolve_and_check_secret(ref, secrets)
     if isinstance(value, dict):
         return {key: resolve_secret_refs(item, secrets) for key, item in value.items()}
     if isinstance(value, list):
@@ -453,6 +504,39 @@ def redact_known_secret_values(value, secrets):
     for secret in sorted(secret_values, key=len, reverse=True):
         redacted = redacted.replace(secret, "[REDACTED]")
     return redact_secret_like(redacted)
+
+
+_TEMPLATE_SECRET_REF_PATTERN = re.compile(r"\{\{secret\.([^}]+)\}\}")
+
+
+def _extract_template_secret_refs(value):
+    """Collects every {{secret.<ref>}} name found anywhere inside `value`
+    (a JSON-shaped structure). Complements resolve_secret_refs, which only
+    walks the older {"secretRef": ...} object form."""
+    refs = []
+    if isinstance(value, str):
+        refs.extend(_TEMPLATE_SECRET_REF_PATTERN.findall(value))
+    elif isinstance(value, dict):
+        for item in value.values():
+            refs.extend(_extract_template_secret_refs(item))
+    elif isinstance(value, list):
+        for item in value:
+            refs.extend(_extract_template_secret_refs(item))
+    return refs
+
+
+def _check_secrets_resolvable(result, secrets):
+    """Optional cross-check when --secrets-file is given: every secretRef a
+    config declares, in either syntax, must actually resolve. Catches "you
+    referenced a ref you forgot to add to secrets.json" before flashing."""
+    resolve_secret_refs(result["settings"]["wifi"], secrets)
+    for command in result["webhooks"]["commands"]:
+        resolve_secret_refs(command["headers"], secrets)
+        template_refs = _extract_template_secret_refs(
+            command["url"]
+        ) + _extract_template_secret_refs(command["body"])
+        for ref in template_refs:
+            _resolve_and_check_secret(ref, secrets)
 
 
 def _load_json(path):
@@ -524,7 +608,7 @@ def _validate_legacy_webhook_app(root):
     return {"manifest": manifest, "commands": commands}
 
 
-def validate_root(root):
+def validate_root(root, secrets_file=None):
     root = Path(root)
     _detect_partial_writes(root)
     _require_directories(root)
@@ -539,12 +623,20 @@ def validate_root(root):
             "missing app pack: apps/webhook_launcher/manifest.json and commands.json"
         )
 
-    return {
+    result = {
         "layout": {"version": SUPPORTED_LAYOUT_VERSION},
         "settings": settings,
         "apps": {WEBHOOK_APP_ID: webhook_app},
         "webhooks": webhook_app["commands"],
     }
+
+    if secrets_file is not None:
+        secrets = _load_json(Path(secrets_file))
+        if not isinstance(secrets, dict):
+            raise ValidationError(f"{_format_path(secrets_file)}: must be a JSON object")
+        _check_secrets_resolvable(result, secrets)
+
+    return result
 
 
 def main(argv=None):
@@ -556,10 +648,16 @@ def main(argv=None):
         type=Path,
         help="SD-card root directory to validate",
     )
+    parser.add_argument(
+        "--secrets-file",
+        type=Path,
+        default=None,
+        help="optional secrets.json to confirm every declared secretRef actually resolves",
+    )
     args = parser.parse_args(argv)
 
     try:
-        result = validate_root(args.root)
+        result = validate_root(args.root, secrets_file=args.secrets_file)
     except ValidationError as exc:
         print(f"config validation failed: {exc}", file=sys.stderr)
         return 1

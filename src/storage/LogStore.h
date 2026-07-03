@@ -5,6 +5,8 @@
 #include <Arduino.h>
 #include <vector>
 
+#include "storage/RedactionRegistry.h"
+
 namespace cardputer_launcher {
 
 struct RequestLogEntry {
@@ -30,9 +32,13 @@ struct RequestLogEntry {
 class LogStore {
  public:
   void begin(bool sdAvailable);
-  bool appendRequest(const RequestLogEntry& entry);
+  // `registry`, when non-null, is consulted first (exact match on the
+  // secret values actually used in this command) before the coarse
+  // keyword-based fallback below. Pass nullptr for log lines with no
+  // known secret bindings.
+  bool appendRequest(const RequestLogEntry& entry, const RedactionRegistry* registry = nullptr);
   std::vector<String> readRecent(size_t maxLines);
-  String redact(const String& value) const;
+  String redact(const String& value, const RedactionRegistry* registry = nullptr) const;
   bool available() const;
 
  private:

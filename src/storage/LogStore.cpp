@@ -34,7 +34,7 @@ void LogStore::begin(bool sdAvailable) {
   }
 }
 
-bool LogStore::appendRequest(const RequestLogEntry& entry) {
+bool LogStore::appendRequest(const RequestLogEntry& entry, const RedactionRegistry* registry) {
   if (!sdAvailable_) {
     return false;
   }
@@ -48,10 +48,13 @@ bool LogStore::appendRequest(const RequestLogEntry& entry) {
   doc["ts_ms"] = millis();
   doc["command"] = entry.command;
   doc["method"] = entry.method;
-  doc["url"] = redact(entry.url);
+  doc["url"] = redact(entry.url, registry);
   doc["status"] = entry.statusCode;
-  doc["outcome"] = entry.outcome;
-  doc["preview"] = redact(limitPreview(entry.preview));
+  // No known code path puts a resolved secret in outcome today (it's always
+  // a fixed status string or a transport-layer error), but it's cheap
+  // defense in depth against a future error source that echoes one.
+  doc["outcome"] = redact(entry.outcome, registry);
+  doc["preview"] = redact(limitPreview(entry.preview), registry);
   serializeJson(doc, file);
   file.println();
   file.close();
@@ -75,6 +78,9 @@ std::vector<String> LogStore::readRecent(size_t maxLines) {
     String line = file.readStringUntil('\n');
     line.trim();
     if (!line.isEmpty()) {
+      // Historical lines were already redacted at write time; this second
+      // pass only re-applies the keyword fallback (no registry, since the
+      // secrets used by a past command are no longer in memory).
       lines.push_back(limitPreview(redact(line)));
       if (lines.size() > maxLines) {
         lines.erase(lines.begin());
@@ -85,11 +91,12 @@ std::vector<String> LogStore::readRecent(size_t maxLines) {
   return lines;
 }
 
-String LogStore::redact(const String& value) const {
-  String lowered = value;
+String LogStore::redact(const String& value, const RedactionRegistry* registry) const {
+  const String stageOne = registry ? registry->redact(value) : value;
+  String lowered = stageOne;
   lowered.toLowerCase();
   if (!hasSecretWord(lowered)) {
-    return value;
+    return stageOne;
   }
   return "[REDACTED]";
 }

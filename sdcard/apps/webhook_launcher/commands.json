@@ -57,12 +57,14 @@
       ],
       "headers": {
         "Content-Type": "application/json",
-        "X-Reason": "{{input.reason}}"
+        "X-Reason": "{{input.reason}}",
+        "Authorization": {"secretRef": "webhooks.deploy.authorization"}
       },
       "body": {
         "source": "cardputer",
         "environment": "{{input.env}}",
-        "notify": "{{input.notify}}"
+        "notify": "{{input.notify}}",
+        "verification_token": "{{secret.webhooks.deploy.authorization}}"
       }
     }
   ]

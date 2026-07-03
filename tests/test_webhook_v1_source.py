@@ -85,7 +85,10 @@ class ConfigLoaderV1SourceTests(unittest.TestCase):
             "validateEmbeddedPlaceholders",
             "validateUrlPlaceholders",
             "validateBodyPlaceholders",
-            'ns != "input"',
+            # "secret" is accepted only where allowSecret is true (url/body);
+            # every other namespace, including "secret" in header text, is
+            # still rejected as reserved or unknown (see PR2 test coverage).
+            'ns == "secret" && allowSecret',
             "placeholder not allowed before the host",
             "placeholder must be the entire JSON string value",
         ]:
@@ -146,7 +149,7 @@ class CommandTemplateSourceTests(unittest.TestCase):
     def test_command_template_converts_boolean_inputs_to_json_literals(self):
         source = _read("src", "network", "CommandTemplate.cpp")
         self.assertIn("InputField::Kind::Boolean", source)
-        self.assertIn('(*boundValue == "true") ? "true" : "false"', source)
+        self.assertIn('(value == "true") ? "true" : "false"', source)
 
     def test_command_template_rejects_header_line_breaks(self):
         source = _read("src", "network", "CommandTemplate.cpp")
@@ -169,8 +172,11 @@ class WebhookLauncherAppStateMachineSourceTests(unittest.TestCase):
         self.assertIn("stage_ = Stage::Preview;", source)
 
     def test_preview_masks_sensitive_header_values(self):
+        # Uses the same [REDACTED] marker as RedactionRegistry (url/body
+        # secrets) so the preview screen doesn't imply two different kinds
+        # of hidden value (PR2, unified from an earlier "***" marker).
         source = _read("src", "apps", "WebhookLauncherApp.cpp")
-        self.assertIn('header.sensitive ? "***" : header.value', source)
+        self.assertIn('header.sensitive ? "[REDACTED]" : header.value', source)
 
     def test_execute_logs_rendered_url_not_template(self):
         source = _read("src", "apps", "WebhookLauncherApp.cpp")

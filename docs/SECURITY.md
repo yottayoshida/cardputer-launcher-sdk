@@ -48,8 +48,18 @@ Webhook Launcher commands can declare typed inputs (`inputs[]`) and reference th
 - Placeholders are rejected at config-load time in the URL scheme, userinfo, host, or port. They may only appear in the path, query, or fragment, so a typed value can never redirect a request to a different host. The resolved URL is re-validated against the same host and scheme checks after substitution, as defense in depth.
 - Body placeholders must be the entire JSON string value (`"{{input.key}}"`); partial string concatenation is rejected at load time.
 - URL substitutions are percent-encoded. Header substitutions are rejected if the typed value contains a line break, to prevent header injection.
-- The `secret` namespace (`{{secret.<ref>}}`) is reserved for a future secret-backed placeholder and is rejected today, so an existing config's meaning cannot silently change when that feature ships.
 - `risk: "high"` commands require both `confirm: true` and `requirePreview: true`; the dry-run preview never displays a `secretRef`-resolved header value.
+
+## Secret-Backed Placeholders and Redaction
+
+`SecretProvider` is an abstract interface (`SdSecretProvider` reads `/secrets.json` from the SD card today; other backends are future work). Every implementation enforces the same policy at resolve time, so every call site gets it for free:
+
+- A resolved secret must be at least 6 bytes and must not contain a control character (including CR/LF). A value that fails either check is rejected outright rather than truncated or partially used.
+- Header values may reference a secret via `{"secretRef": "<ref>"}`, resolved once at config-load time and never shown in the dry-run preview (`Header.sensitive`).
+- URL and JSON body values may reference a secret via a `{{secret.<ref>}}` placeholder, resolved at render/execute time only, and never persisted in the loaded command -- only in a short-lived render result.
+- `wifi.password` accepts the same `{"secretRef": "<ref>"}` object as header values.
+- Every secret value resolved while rendering or executing a command is registered (in its raw, percent-encoded, and JSON-escaped forms) into a `RedactionRegistry` scoped to that single command. The dry-run preview, the on-screen response preview, and the JSONL log entry are all redacted through that registry before display or write, in addition to the pre-existing keyword-based fallback. Registration is all-or-nothing: if a command's secrets cannot all fit within the registry's capacity, the command is aborted rather than proceeding with partial redaction coverage.
+- The host-side `validate_configs.py` mirrors the same length/control-character policy and (with an optional `--secrets-file`) can confirm every declared secretRef actually resolves before flashing.
 
 ## Issue #10 Threats
 
