@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by Keep a Changelog, and this project uses semantic versioning once a stable public API exists.
 
+## [Unreleased]
+
+### Added
+
+- Keyboard command search with incremental filtering for the launcher app list and Webhook Launcher commands (Tab to search, Cancel to clear, filter persists on Tab-exit).
+- fn-layer arrow keys (`fn+;.,/`) as the primary navigation path, with legacy `w/s/y/n/j/k` shortcuts kept as Navigation-mode-only aliases so they no longer collide with typed text entry.
+- `TextInput` cursor movement, field-level max length, default-value seeding, and horizontal scroll window for small-screen display.
+- Webhook Launcher typed command inputs (short text, choice, boolean, confirmation) with per-field required/default/maxLength/choices validation.
+- Bounded `{{input.<key>}}` templating for Webhook Launcher URLs, headers, and JSON body values, with percent-encoding for URL substitution, JSON-escaped or type-converted substitution for body values, and a reserved `secret` namespace for future secret-backed placeholders.
+- Webhook Launcher categories, descriptions, risk labels, and a dry-run preview screen; `risk: high` commands require both `confirm` and `requirePreview`.
+- Case-insensitive URL scheme comparison in firmware config validation, matching the host-side validator's RFC 3986 behavior.
+
+### Changed
+
+- Bare Backspace now triggers Back (previously required `fn+Backspace`); `fn+Backspace` now triggers a new Clear action that empties the active text field.
+
 ## [0.2.0] - 2026-07-02
 
 ### Added

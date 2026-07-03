@@ -41,6 +41,16 @@ Transport hardening limits blocking and data exposure:
 
 TLS limitations remain important: the current firmware uses the Arduino HTTP stack and does not provide application-level certificate pinning, custom CA provisioning, or per-command trust anchors. Future v1.0 work should add certificate pinning or managed trust-anchor options after hardware Wi-Fi validation.
 
+## Typed Input Templating
+
+Webhook Launcher commands can declare typed inputs (`inputs[]`) and reference the collected values with `{{input.<key>}}` placeholders in the URL, headers, and body.
+
+- Placeholders are rejected at config-load time in the URL scheme, userinfo, host, or port. They may only appear in the path, query, or fragment, so a typed value can never redirect a request to a different host. The resolved URL is re-validated against the same host and scheme checks after substitution, as defense in depth.
+- Body placeholders must be the entire JSON string value (`"{{input.key}}"`); partial string concatenation is rejected at load time.
+- URL substitutions are percent-encoded. Header substitutions are rejected if the typed value contains a line break, to prevent header injection.
+- The `secret` namespace (`{{secret.<ref>}}`) is reserved for a future secret-backed placeholder and is rejected today, so an existing config's meaning cannot silently change when that feature ships.
+- `risk: "high"` commands require both `confirm: true` and `requirePreview: true`; the dry-run preview never displays a `secretRef`-resolved header value.
+
 ## Issue #10 Threats
 
 - lost SD card: `/secrets.json`, command packs, and logs are readable by anyone with the card.

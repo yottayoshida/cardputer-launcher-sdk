@@ -68,11 +68,22 @@ bool isLoopbackHost(const String& host) {
   return host.equalsIgnoreCase("localhost") || host == "127.0.0.1" || host == "::1";
 }
 
+// RFC 3986 scheme names are case-insensitive; ConfigLoader::validateHttpsUrl
+// already accepts mixed-case schemes at load time, so execution policy must
+// agree or a validly-loaded command fails here with "URL policy blocked".
+bool startsWithScheme(const String& url, const char* scheme) {
+  size_t len = strlen(scheme);
+  if (url.length() < len) {
+    return false;
+  }
+  return url.substring(0, len).equalsIgnoreCase(scheme);
+}
+
 bool isAllowedUrl(const String& url, bool allowLocalHttp) {
-  if (url.startsWith("https://")) {
+  if (startsWithScheme(url, "https://")) {
     return true;
   }
-  if (!url.startsWith("http://")) {
+  if (!startsWithScheme(url, "http://")) {
     return false;
   }
   return allowLocalHttp && isLoopbackHost(hostOf(url));

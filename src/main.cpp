@@ -64,7 +64,7 @@ void loop() {
   M5Cardputer.update();
 
   AppContext ctx{display, config, logs, secrets, wifi, http, toast, config.sdAvailable()};
-  InputEvent event = keyboard.poll();
+  InputEvent event = keyboard.poll(launcher.currentInputMode(ctx));
   launcher.handleInput(ctx, event);
   launcher.tick(ctx);
   launcher.render(ctx);

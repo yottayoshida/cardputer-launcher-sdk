@@ -23,6 +23,47 @@
       "headers": {
         "X-Device": "cardputer-launcher-sdk"
       }
+    },
+    {
+      "name": "Deploy to Environment",
+      "method": "POST",
+      "url": "https://example.com/webhook/deploy/{{input.env}}",
+      "category": "deploy",
+      "description": "Trigger a deploy for a chosen environment.",
+      "risk": "high",
+      "confirm": true,
+      "requirePreview": true,
+      "inputs": [
+        {
+          "key": "env",
+          "kind": "choice",
+          "label": "Environment",
+          "choices": ["staging", "prod"],
+          "default": "staging"
+        },
+        {
+          "key": "reason",
+          "kind": "text",
+          "label": "Reason",
+          "maxLength": 40,
+          "required": false
+        },
+        {
+          "key": "notify",
+          "kind": "boolean",
+          "label": "Notify Slack?",
+          "default": "false"
+        }
+      ],
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Reason": "{{input.reason}}"
+      },
+      "body": {
+        "source": "cardputer",
+        "environment": "{{input.env}}",
+        "notify": "{{input.notify}}"
+      }
     }
   ]
 }

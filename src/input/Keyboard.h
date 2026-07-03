@@ -8,11 +8,22 @@ enum class InputAction {
   None,
   Up,
   Down,
+  Left,
+  Right,
   Select,
   Back,
+  Clear,
+  ToggleSearch,
   Confirm,
   Cancel,
   Character,
+};
+
+// TextEntry lets w/s/y/n reach the caller as literal Character events instead
+// of being intercepted as legacy navigation shortcuts.
+enum class InputMode {
+  Navigation,
+  TextEntry,
 };
 
 struct InputEvent {
@@ -26,7 +37,7 @@ struct InputEvent {
 
 class Keyboard {
  public:
-  InputEvent poll();
+  InputEvent poll(InputMode mode = InputMode::Navigation);
 };
 
 }  // namespace cardputer_launcher

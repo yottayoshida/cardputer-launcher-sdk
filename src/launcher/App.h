@@ -31,6 +31,22 @@ class App {
   virtual void onStop(AppContext& ctx) { (void)ctx; }
   virtual void onInput(AppContext& ctx, const InputEvent& event) = 0;
   virtual void render(AppContext& ctx) = 0;
+
+  // Navigation is the default; apps override to TextEntry only while a text
+  // field currently owns keyboard focus (see Keyboard::poll(InputMode)).
+  virtual InputMode inputMode(const AppContext& ctx) const {
+    (void)ctx;
+    return InputMode::Navigation;
+  }
+
+  // Whether the app wants Back routed to onInput() instead of Launcher
+  // closing it. Distinct from inputMode(): a multi-step app (e.g. a field
+  // wizard or a confirmation screen) can own Back to mean "go to the
+  // previous step" without needing TextEntry's raw-character passthrough.
+  virtual bool ownsBack(const AppContext& ctx) const {
+    (void)ctx;
+    return false;
+  }
 };
 
 }  // namespace cardputer_launcher

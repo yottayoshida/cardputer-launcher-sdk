@@ -31,7 +31,12 @@ class FirmwareConfigLoaderSourceTests(unittest.TestCase):
     def test_confirm_validation_distinguishes_missing_from_explicit_null(self):
         text = SOURCE.read_text()
 
-        self.assertIn('hasMember(item, "confirm")', text)
+        # confirm is parsed via the shared parseOptionalBool() helper, which
+        # itself checks presence with hasMember(item, key) -- not
+        # containsKey(), which does not distinguish missing from explicit
+        # null.
+        self.assertIn('parseOptionalBool(item, "confirm"', text)
+        self.assertIn("hasMember(item, key)", _helper_body("parseOptionalBool"))
         self.assertNotIn(".containsKey(", text)
 
 

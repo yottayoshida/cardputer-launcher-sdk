@@ -37,6 +37,9 @@ SECRET_REF_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 SECRET_REF_KEY = "secretRef"
 MAX_REQUEST_BODY_BYTES = 2048
 LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1"}
+INPUT_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+INPUT_KINDS = {"text", "choice", "boolean", "confirmation"}
+RISK_LEVELS = {"low", "medium", "high"}
 
 
 def _require_object(value, path):
@@ -76,7 +79,69 @@ def validate_settings(data):
     }
 
 
-def _validate_url(value, path, allow_local_http=False):
+# Only the "input" namespace is implemented in this PR; "secret" and any
+# other namespace are reserved so a config that loads today keeps the same
+# meaning once secret-backed placeholders are implemented (see SECURITY.md).
+def _validate_placeholder_token(token, input_keys, path):
+    dot = token.find(".")
+    if dot < 0:
+        raise ValidationError(f"{path} placeholder must be namespace.key")
+    namespace = token[:dot]
+    key = token[dot + 1 :]
+    if namespace != "input":
+        raise ValidationError(
+            f"{path} placeholder namespace '{namespace}' is reserved or unknown"
+        )
+    if key not in input_keys:
+        raise ValidationError(f"{path} references undefined input '{key}'")
+    return key
+
+
+def _validate_embedded_placeholders(text, input_keys, path):
+    search_from = 0
+    while True:
+        open_idx = text.find("{{", search_from)
+        if open_idx < 0:
+            return
+        close_idx = text.find("}}", open_idx + 2)
+        if close_idx < 0:
+            raise ValidationError(f"{path} has an unterminated placeholder")
+        _validate_placeholder_token(text[open_idx + 2 : close_idx], input_keys, path)
+        search_from = close_idx + 2
+
+
+# Placeholders may appear anywhere at or after `authority_end` (the URL's
+# path/query/fragment), never in the scheme/userinfo/host/port, so a typed
+# value can never redirect a request to a different host.
+def _validate_url_placeholders(url, authority_end, input_keys, path):
+    first_open = url.find("{{")
+    if 0 <= first_open < authority_end:
+        raise ValidationError(f"{path} placeholder not allowed before the host")
+    _validate_embedded_placeholders(url, input_keys, path)
+
+
+# Body placeholders must occupy an entire JSON string value ("{{input.x}}")
+# so substitution is a single token replacement, not string concatenation
+# inside arbitrary JSON text.
+def _validate_body_placeholders(value, input_keys, path):
+    if isinstance(value, str):
+        if "{{" not in value and "}}" not in value:
+            return
+        inner = value[2:-2] if value.startswith("{{") and value.endswith("}}") else None
+        if inner is None or "{{" in inner or "}}" in inner:
+            raise ValidationError(f"{path} placeholder must be the entire JSON string value")
+        _validate_placeholder_token(inner, input_keys, path)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if "{{" in key or "}}" in key:
+                raise ValidationError(f"{path} placeholder must be a value, not an object key")
+            _validate_body_placeholders(item, input_keys, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_body_placeholders(item, input_keys, f"{path}[{index}]")
+
+
+def _validate_url(value, path, allow_local_http=False, input_keys=None):
     url = _require_string(value, path)
     parsed = urlparse(url)
     if parsed.scheme == "http":
@@ -88,6 +153,11 @@ def _validate_url(value, path, allow_local_http=False):
         raise ValidationError(f"{path} must use https")
     if not parsed.netloc:
         raise ValidationError(f"{path} must include a host")
+
+    if input_keys is not None:
+        authority_end = len(parsed.scheme) + 3 + len(parsed.netloc)
+        _validate_url_placeholders(url, authority_end, input_keys, path)
+
     return url
 
 
@@ -124,23 +194,29 @@ def validate_secret_ref_value(value, path):
     raise ValidationError(f"{path} must be a string or secretRef object")
 
 
-def _validate_headers(value, path):
+def _validate_headers(value, path, input_keys):
     if value is None:
         return {}
     headers = _require_object(value, path)
     normalized = {}
     for key, header_value in headers.items():
         header_name = _require_string(key, f"{path} key")
-        normalized[header_name] = validate_secret_ref_value(
-            header_value, f"{path}.{header_name}"
-        )
+        normalized_value = validate_secret_ref_value(header_value, f"{path}.{header_name}")
+        # Secret-backed values are opaque; only literal header text may
+        # reference typed inputs.
+        if isinstance(normalized_value, str):
+            _validate_embedded_placeholders(
+                normalized_value, input_keys, f"{path}.{header_name}"
+            )
+        normalized[header_name] = normalized_value
     return normalized
 
 
-def _validate_json_body(value, path):
+def _validate_json_body(value, path, input_keys):
     if value is None:
         return None
     if isinstance(value, (dict, list, str, int, float, bool)) or value is None:
+        _validate_body_placeholders(value, input_keys, path)
         body_bytes = len(json.dumps(value, separators=(",", ":")).encode("utf-8"))
         if body_bytes > MAX_REQUEST_BODY_BYTES:
             raise ValidationError(
@@ -148,6 +224,92 @@ def _validate_json_body(value, path):
             )
         return value
     raise ValidationError(f"{path} must be a JSON value")
+
+
+def _validate_input_field(value, path):
+    field = _require_object(value, path)
+    key = _require_string(field.get("key"), f"{path}.key")
+    if not INPUT_KEY_PATTERN.fullmatch(key):
+        raise ValidationError(
+            f"{path}.key must start with a-z and contain only a-z, 0-9, or _"
+        )
+
+    kind = _require_string(field.get("kind"), f"{path}.kind")
+    if kind not in INPUT_KINDS:
+        raise ValidationError(f"{path}.kind must be text, choice, boolean, or confirmation")
+
+    label = _require_string(field.get("label"), f"{path}.label")
+
+    required = field.get("required", True)
+    if not isinstance(required, bool):
+        raise ValidationError(f"{path}.required must be true or false")
+
+    choices = field.get("choices")
+    if kind == "choice":
+        if not isinstance(choices, list) or not (2 <= len(choices) <= 8):
+            raise ValidationError(f"{path}.choices must have 2 to 8 entries")
+        choices = [
+            _require_string(choice, f"{path}.choices[{i}]")
+            for i, choice in enumerate(choices)
+        ]
+    elif choices is not None:
+        raise ValidationError(f"{path}.choices is only valid for kind choice")
+    else:
+        choices = []
+
+    max_length = field.get("maxLength")
+    if kind == "text":
+        if max_length is None:
+            max_length = 96
+        elif (
+            not isinstance(max_length, int)
+            or isinstance(max_length, bool)
+            or not (1 <= max_length <= 128)
+        ):
+            raise ValidationError(f"{path}.maxLength must be between 1 and 128")
+    elif max_length is not None:
+        raise ValidationError(f"{path}.maxLength is only valid for kind text")
+    else:
+        max_length = 96
+
+    # Validated after choices/maxLength are known so a bad default (too
+    # long, not a declared choice, not a real boolean) fails loudly at load
+    # time instead of being silently clamped or ignored when shown.
+    default = field.get("default", "")
+    if default and not isinstance(default, str):
+        raise ValidationError(f"{path}.default must be a string")
+    if default:
+        if kind == "text" and len(default) > max_length:
+            raise ValidationError(f"{path}.default exceeds maxLength")
+        elif kind == "choice" and default not in choices:
+            raise ValidationError(f"{path}.default must be one of choices")
+        elif kind == "boolean" and default not in ("true", "false"):
+            raise ValidationError(f"{path}.default must be true or false")
+        elif kind == "confirmation":
+            raise ValidationError(f"{path}.default is not valid for kind confirmation")
+
+    return {
+        "key": key,
+        "kind": kind,
+        "label": label,
+        "required": required,
+        "default": default or "",
+        "choices": choices,
+        "maxLength": max_length,
+    }
+
+
+def _validate_inputs(value, path):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValidationError(f"{path} must be an array")
+    fields = [_validate_input_field(item, f"{path}[{i}]") for i, item in enumerate(value)]
+    keys = [field["key"] for field in fields]
+    duplicates = {key for key in keys if keys.count(key) > 1}
+    if duplicates:
+        raise ValidationError(f"{path} has duplicate key '{sorted(duplicates)[0]}'")
+    return fields
 
 
 def validate_webhook_config(data):
@@ -169,14 +331,45 @@ def validate_webhook_config(data):
         allow_local_http = command.get("allowLocalHttp", False)
         if not isinstance(allow_local_http, bool):
             raise ValidationError(f"{path}.allowLocalHttp must be true or false")
-        url = _validate_url(
-            command.get("url"), f"{path}.url", allow_local_http=allow_local_http
-        )
+
         confirm = command.get("confirm", False)
         if not isinstance(confirm, bool):
             raise ValidationError(f"{path}.confirm must be true or false")
-        headers = _validate_headers(command.get("headers"), f"{path}.headers")
-        body = _validate_json_body(command.get("body"), f"{path}.body")
+
+        if "category" in command:
+            category = _require_string(command.get("category"), f"{path}.category")
+        else:
+            category = ""
+
+        if "description" in command:
+            description = _require_string(command.get("description"), f"{path}.description")
+        else:
+            description = ""
+
+        risk = command.get("risk", "low")
+        if risk not in RISK_LEVELS:
+            raise ValidationError(f"{path}.risk must be low, medium, or high")
+
+        require_preview = command.get("requirePreview", False)
+        if not isinstance(require_preview, bool):
+            raise ValidationError(f"{path}.requirePreview must be true or false")
+
+        if risk == "high" and not (confirm and require_preview):
+            raise ValidationError(
+                f"{path} risk:high requires confirm:true and requirePreview:true"
+            )
+
+        inputs = _validate_inputs(command.get("inputs"), f"{path}.inputs")
+        input_keys = {field["key"] for field in inputs}
+
+        url = _validate_url(
+            command.get("url"),
+            f"{path}.url",
+            allow_local_http=allow_local_http,
+            input_keys=input_keys,
+        )
+        headers = _validate_headers(command.get("headers"), f"{path}.headers", input_keys)
+        body = _validate_json_body(command.get("body"), f"{path}.body", input_keys)
         if method == "GET" and body is not None:
             raise ValidationError(f"{path}.body is only supported for POST")
 
@@ -187,6 +380,11 @@ def validate_webhook_config(data):
                 "url": url,
                 "allowLocalHttp": allow_local_http,
                 "confirm": confirm,
+                "category": category,
+                "description": description,
+                "risk": risk,
+                "requirePreview": require_preview,
+                "inputs": inputs,
                 "headers": headers,
                 "body": body,
             }

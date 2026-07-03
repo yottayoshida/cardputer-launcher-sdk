@@ -12,7 +12,7 @@ class HttpTransportSourceTests(unittest.TestCase):
         app = (REPO_ROOT / "src/apps/WebhookLauncherApp.cpp").read_text()
 
         self.assertIn("bool allowLocalHttp", header)
-        self.assertIn('item["allowLocalHttp"]', source)
+        self.assertIn('parseOptionalBool(item, "allowLocalHttp"', source)
         self.assertIn("request.allowLocalHttp = command.allowLocalHttp", app)
 
     def test_http_client_declares_error_kind_and_limits(self):

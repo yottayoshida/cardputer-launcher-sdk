@@ -65,6 +65,18 @@ Use a test network and a test webhook endpoint. Do not use production webhooks f
 7. Select the command again, press `y`, and confirm the request result is visible.
 8. Inspect `/logs/launcher.jsonl` and confirm obvious authorization tokens are not present.
 
+## Keyboard, Search, and Typed Input Acceptance
+
+1. Press the bare Backspace key (no `fn`) while an app is open. Confirm it returns to the launcher (previously required `fn+Backspace`).
+2. In a list, confirm `fn+;` `fn+.` `fn+,` `fn+/` move Up/Down/Left/Right, and that legacy `w`/`s`/`k`/`j` still work.
+3. Press Tab in a list to open search. Type a query containing `w`, `s`, `y`, or `n` and confirm those letters filter the list as literal text instead of navigating.
+4. With a filter applied, confirm results narrow correctly, an unmatched query shows an empty list without crashing, and `fn+Backspace` clears the query back to the full list.
+5. Press Tab to exit search and confirm the filtered list stays applied; press `n` (or `fn+`` ` ``) to exit search from a different attempt and confirm the filter clears instead.
+6. Open the "Deploy to Environment" sample command (or an equivalent command with `inputs`). Step through each typed input: cycle the choice field with `fn+,`/`fn+/`, type a value containing `w`/`s`/`y`/`n` into the text field and confirm it is accepted as literal text, and toggle the boolean field with `fn+,`/`fn+/` (confirm `y`/`n` no longer set the boolean value and instead abort the command, consistent with every other field kind).
+7. Confirm the dry-run preview screen shows the resolved URL and headers, that any `secretRef`-backed header is masked, and that canceling from preview sends no request.
+8. Confirm the request actually delivered to the test endpoint matches what the preview displayed.
+9. Add a command with an uppercase-scheme URL (e.g. `HTTPS://example.com/...`) to a test SD card. Confirm it loads (host validator and firmware both accept mixed-case schemes) and confirm the actual HTTP request succeeds against a test endpoint, not just that it passes validation — the underlying ESP32 `HTTPClient` library's own scheme handling has not been hardware-verified.
+
 ## Built-In App Acceptance
 
 | App | Manual acceptance case | Expected result |
