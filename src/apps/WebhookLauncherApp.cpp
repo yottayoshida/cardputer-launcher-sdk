@@ -212,6 +212,17 @@ void WebhookLauncherApp::prepareCurrentField() {
 void WebhookLauncherApp::abortCommand(const char* reason) {
   stage_ = Stage::List;
   status_ = reason;
+  clearPendingSecrets();
+}
+
+void WebhookLauncherApp::clearPendingSecrets() {
+  pendingRedaction_ = RedactionRegistry();
+  redactedPreviewUrl_ = "";
+  // pendingRequest_ also holds resolved secret material (percent-encoded in
+  // the url, JSON-escaped in the body, raw in sensitive headers), so it must
+  // be wiped alongside the registry, not just left for the next command's
+  // finishInputCollection() to overwrite.
+  pendingRequest_ = RenderedRequest();
 }
 
 void WebhookLauncherApp::handleFieldInput(AppContext& ctx, const InputEvent& event) {
@@ -334,13 +345,46 @@ void WebhookLauncherApp::advanceAfterField(AppContext& ctx) {
   finishInputCollection(ctx);
 }
 
+bool WebhookLauncherApp::registerPendingSecretsForRedaction(
+    const WebhookCommand& command, const std::vector<String>& resolvedSecrets) {
+  pendingRedaction_ = RedactionRegistry();
+  auto registerOrFail = [this](const String& secret) {
+    return pendingRedaction_.registerSecret(secret) == RedactionRegistry::RegisterResult::Ok;
+  };
+
+  for (const String& secret : resolvedSecrets) {
+    if (!registerOrFail(secret)) {
+      return false;
+    }
+  }
+  for (const Header& header : command.headers) {
+    if (header.sensitive && !registerOrFail(header.value)) {
+      return false;
+    }
+  }
+
+  redactedPreviewUrl_ = pendingRedaction_.redact(pendingRequest_.url);
+  return true;
+}
+
 void WebhookLauncherApp::finishInputCollection(AppContext& ctx) {
   const WebhookCommand& command = commands_[activeCommandIndex_];
-  pendingRequest_ = renderCommandTemplate(command, bindings_);
-  if (!pendingRequest_.ok) {
-    status_ = pendingRequest_.error;
+  auto failWithToast = [this, &ctx](const String& message) {
+    status_ = message;
     ctx.toast.show(status_);
     stage_ = Stage::List;
+    clearPendingSecrets();
+  };
+
+  std::vector<String> resolvedSecrets;
+  pendingRequest_ = renderCommandTemplate(command, bindings_, &ctx.secrets, &resolvedSecrets);
+  if (!pendingRequest_.ok) {
+    failWithToast(pendingRequest_.error);
+    return;
+  }
+
+  if (!registerPendingSecretsForRedaction(command, resolvedSecrets)) {
+    failWithToast("Too many secrets in this command");
     return;
   }
 
@@ -399,7 +443,7 @@ void WebhookLauncherApp::render(AppContext& ctx) {
       const WebhookCommand& command = commands_[activeCommandIndex_];
       ctx.display.status("Confirm", command.method);
       ctx.display.line(0, command.name);
-      ctx.display.line(1, previewUrlLine(pendingRequest_.url));
+      ctx.display.line(1, previewUrlLine(redactedPreviewUrl_));
       ctx.display.line(3, "Y confirm / N cancel");
       return;
     }
@@ -446,14 +490,16 @@ void WebhookLauncherApp::renderPreview(AppContext& ctx) {
   const WebhookCommand& command = commands_[activeCommandIndex_];
   ctx.display.status("Preview", command.method);
   ctx.display.line(0, command.name);
-  ctx.display.line(1, previewUrlLine(pendingRequest_.url));
+  ctx.display.line(1, previewUrlLine(redactedPreviewUrl_));
 
   size_t row = 2;
   for (const Header& header : pendingRequest_.headers) {
     if (row >= 5) {
       break;
     }
-    String value = header.sensitive ? "***" : header.value;
+    // Same marker RedactionRegistry uses for url/body secrets, so the
+    // preview screen doesn't imply two different kinds of hidden value.
+    String value = header.sensitive ? "[REDACTED]" : header.value;
     ctx.display.line(static_cast<uint8_t>(row), header.name + ": " + value);
     ++row;
   }
@@ -466,16 +512,19 @@ void WebhookLauncherApp::execute(AppContext& ctx, const WebhookCommand& command,
   preview_ = "";
 
   WifiSettings settings;
-  if (!ctx.config.loadWifi(settings)) {
+  if (!ctx.config.loadWifi(settings, &ctx.secrets)) {
     status_ = ctx.config.lastError();
     ctx.toast.show(status_);
+    clearPendingSecrets();
     return;
   }
 
   if (!ctx.wifi.connect(settings)) {
     status_ = ctx.wifi.lastError();
     ctx.toast.show(status_);
-    ctx.logs.appendRequest({command.name, command.method, rendered.url, 0, status_, ""});
+    ctx.logs.appendRequest({command.name, command.method, rendered.url, 0, status_, ""},
+                            &pendingRedaction_);
+    clearPendingSecrets();
     return;
   }
 
@@ -494,10 +543,12 @@ void WebhookLauncherApp::execute(AppContext& ctx, const WebhookCommand& command,
   } else {
     status_ = response.error;
   }
-  preview_ = response.preview;
+  preview_ = pendingRedaction_.redact(response.preview);
   ctx.toast.show(status_);
   ctx.logs.appendRequest(
-      {command.name, command.method, rendered.url, response.statusCode, status_, preview_});
+      {command.name, command.method, rendered.url, response.statusCode, status_, preview_},
+      &pendingRedaction_);
+  clearPendingSecrets();
 }
 
 }  // namespace cardputer_launcher

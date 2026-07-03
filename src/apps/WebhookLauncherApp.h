@@ -8,6 +8,7 @@
 #include "launcher/App.h"
 #include "network/CommandTemplate.h"
 #include "storage/ConfigLoader.h"
+#include "storage/RedactionRegistry.h"
 #include "ui/Menu.h"
 #include "ui/TextInput.h"
 
@@ -42,6 +43,17 @@ class WebhookLauncherApp : public App {
   void handleConfirmInput(AppContext& ctx, const InputEvent& event);
   void renderFieldEditor(AppContext& ctx);
   void renderPreview(AppContext& ctx);
+  // Registers every secret value used by `pendingRequest_` (rendered
+  // url/body secrets plus sensitive header values) into pendingRedaction_,
+  // then caches the redacted preview URL. Returns false if the registry's
+  // capacity is exceeded -- finishInputCollection() treats that as a hard
+  // failure and must not proceed to preview or execute (fail-closed).
+  bool registerPendingSecretsForRedaction(const WebhookCommand& command,
+                                           const std::vector<String>& resolvedSecrets);
+  // Drops pendingRedaction_'s resolved secret values and the cached
+  // redacted preview URL as soon as they're no longer needed (command
+  // finished, aborted, or failed before a redaction registry existed).
+  void clearPendingSecrets();
 
   std::vector<WebhookCommand> commands_;
   Menu menu_;
@@ -61,6 +73,14 @@ class WebhookLauncherApp : public App {
   size_t choiceIndex_ = 0;
   bool boolValue_ = false;
   RenderedRequest pendingRequest_;
+  // Scoped to the current command's rendering/execution: (re)built in
+  // registerPendingSecretsForRedaction() and cleared as soon as the command
+  // finishes or is aborted, so a resolved secret's in-memory lifetime is as
+  // short as possible.
+  RedactionRegistry pendingRedaction_;
+  // pendingRequest_.url with pendingRedaction_ applied, computed once when
+  // the registry is built rather than on every render() call.
+  String redactedPreviewUrl_;
 };
 
 }  // namespace cardputer_launcher

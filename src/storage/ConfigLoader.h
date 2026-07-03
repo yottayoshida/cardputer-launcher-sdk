@@ -5,9 +5,9 @@
 #include <Arduino.h>
 #include <vector>
 
-namespace cardputer_launcher {
+#include "storage/SecretProvider.h"
 
-class SecretStore;
+namespace cardputer_launcher {
 
 struct WifiSettings {
   String ssid;
@@ -61,8 +61,8 @@ class ConfigLoader {
   void setSdAvailable(bool available);
   bool sdAvailable() const;
   bool ensureLayout();
-  bool loadWifi(WifiSettings& settings);
-  bool loadWebhooks(std::vector<WebhookCommand>& commands, SecretStore* secrets = nullptr);
+  bool loadWifi(WifiSettings& settings, SecretProvider* secrets = nullptr);
+  bool loadWebhooks(std::vector<WebhookCommand>& commands, SecretProvider* secrets = nullptr);
   const String& lastError() const;
 
  private:

@@ -6,7 +6,7 @@
 #include <SD.h>
 
 #include "storage/SdLayout.h"
-#include "storage/SecretStore.h"
+#include "storage/SecretProvider.h"
 
 namespace cardputer_launcher {
 
@@ -68,8 +68,12 @@ bool parseOptionalBool(JsonObject item, const char* key, const String& path, boo
   return true;
 }
 
-bool resolveHeaderValue(JsonVariant value, SecretStore* secrets, String& resolved,
-                        bool& wasSecret, String& error) {
+// Resolves a value that may be a literal string or a {"secretRef": "<ref>"}
+// object. Shared by header values and wifi.password so both surfaces get the
+// same secretRef object syntax and the same SecretProvider policy checks
+// (minimum length, no control characters) for free.
+bool resolveSecretOrLiteral(JsonVariant value, SecretProvider* secrets, const String& contextLabel,
+                             String& resolved, bool& wasSecret, String& error) {
   resolved = "";
   wasSecret = false;
 
@@ -80,7 +84,7 @@ bool resolveHeaderValue(JsonVariant value, SecretStore* secrets, String& resolve
   }
 
   if (!value.is<JsonObject>()) {
-    error = "webhook header invalid";
+    error = contextLabel + " invalid";
     return false;
   }
 
@@ -301,11 +305,15 @@ bool startsWithScheme(const String& url, const char* scheme) {
   return url.substring(0, len).equalsIgnoreCase(scheme);
 }
 
-// Only the "input" namespace is implemented in this PR. "secret" and any
-// other namespace are reserved so a config that loads today keeps the same
-// meaning once secret-backed placeholders are implemented (see SECURITY.md).
+// "input" is always implemented. "secret" is accepted only where
+// `allowSecret` is true (URL and body; header text keeps the older
+// {"secretRef": ...} object syntax instead, see resolveSecretOrLiteral), and
+// only validates ref syntax here -- actual resolution happens at render time
+// so a config can be validated without SD access. Any other namespace is
+// reserved so a config that loads today keeps the same meaning once a new
+// namespace is implemented (see SECURITY.md).
 bool validatePlaceholderToken(const String& token, const std::vector<InputField>& inputs,
-                               const String& path, String& error) {
+                               const String& path, bool allowSecret, String& error) {
   int dot = token.indexOf('.');
   if (dot < 0) {
     error = path + " placeholder must be namespace.key";
@@ -313,23 +321,31 @@ bool validatePlaceholderToken(const String& token, const std::vector<InputField>
   }
   String ns = token.substring(0, dot);
   String key = token.substring(dot + 1);
-  if (ns != "input") {
-    error = path + " placeholder namespace '" + ns + "' is reserved or unknown";
+  if (ns == "input") {
+    for (const InputField& field : inputs) {
+      if (field.key == key) {
+        return true;
+      }
+    }
+    error = path + " references undefined input '" + key + "'";
     return false;
   }
-  for (const InputField& field : inputs) {
-    if (field.key == key) {
-      return true;
+  if (ns == "secret" && allowSecret) {
+    if (!isValidSecretRefName(key)) {
+      error = path + " secret ref must use letters, numbers, dots, underscores, colons, or hyphens";
+      return false;
     }
+    return true;
   }
-  error = path + " references undefined input '" + key + "'";
+  error = path + " placeholder namespace '" + ns + "' is reserved or unknown";
   return false;
 }
 
 // Used for header values and (indirectly) URLs: any number of "{{input.x}}"
-// placeholders embedded anywhere in free text.
+// (and, where allowed, "{{secret.x}}") placeholders embedded anywhere in
+// free text.
 bool validateEmbeddedPlaceholders(const String& text, const std::vector<InputField>& inputs,
-                                   const String& path, String& error) {
+                                   const String& path, bool allowSecret, String& error) {
   int searchFrom = 0;
   while (true) {
     int open = text.indexOf("{{", searchFrom);
@@ -341,7 +357,8 @@ bool validateEmbeddedPlaceholders(const String& text, const std::vector<InputFie
       error = path + " has an unterminated placeholder";
       return false;
     }
-    if (!validatePlaceholderToken(text.substring(open + 2, close), inputs, path, error)) {
+    if (!validatePlaceholderToken(text.substring(open + 2, close), inputs, path, allowSecret,
+                                   error)) {
       return false;
     }
     searchFrom = close + 2;
@@ -350,7 +367,8 @@ bool validateEmbeddedPlaceholders(const String& text, const std::vector<InputFie
 
 // Placeholders may appear anywhere at or after `authorityEnd` (the URL's
 // path/query/fragment), never in the scheme/userinfo/host/port, so a typed
-// value can never redirect a request to a different host.
+// value or a resolved secret can never redirect a request to a different
+// host.
 bool validateUrlPlaceholders(const String& url, size_t authorityEnd,
                               const std::vector<InputField>& inputs, const String& path,
                               String& error) {
@@ -359,12 +377,12 @@ bool validateUrlPlaceholders(const String& url, size_t authorityEnd,
     error = path + " placeholder not allowed before the host";
     return false;
   }
-  return validateEmbeddedPlaceholders(url, inputs, path, error);
+  return validateEmbeddedPlaceholders(url, inputs, path, /*allowSecret=*/true, error);
 }
 
-// Body placeholders must occupy an entire JSON string value ("{{input.x}}",
-// quotes included) so substitution is a single token replacement rather than
-// string concatenation inside arbitrary JSON text.
+// Body placeholders must occupy an entire JSON string value ("{{input.x}}"
+// or "{{secret.x}}", quotes included) so substitution is a single token
+// replacement rather than string concatenation inside arbitrary JSON text.
 bool validateBodyPlaceholders(const String& bodyJson, const std::vector<InputField>& inputs,
                                const String& path, String& error) {
   int searchFrom = 0;
@@ -393,7 +411,8 @@ bool validateBodyPlaceholders(const String& bodyJson, const std::vector<InputFie
       error = path + " placeholder must be a value, not an object key";
       return false;
     }
-    if (!validatePlaceholderToken(bodyJson.substring(open + 2, close), inputs, path, error)) {
+    if (!validatePlaceholderToken(bodyJson.substring(open + 2, close), inputs, path,
+                                   /*allowSecret=*/true, error)) {
       return false;
     }
     searchFrom = close + 2;
@@ -465,7 +484,7 @@ bool ConfigLoader::sdAvailable() const { return sdAvailable_; }
 
 bool ConfigLoader::ensureLayout() { return ensureSdLayout(sdAvailable_, lastError_); }
 
-bool ConfigLoader::loadWifi(WifiSettings& settings) {
+bool ConfigLoader::loadWifi(WifiSettings& settings, SecretProvider* secrets) {
   if (!ensureSd(sdAvailable_, lastError_)) {
     return false;
   }
@@ -498,10 +517,25 @@ bool ConfigLoader::loadWifi(WifiSettings& settings) {
     return false;
   }
 
+  // wifi.password accepts either a literal string (unchanged from earlier
+  // versions) or a {"secretRef": "<ref>"} object, resolved through the same
+  // provider policy (minimum length, no control characters) as headers.
   String password;
-  if (!readRequiredString(doc["wifi"]["password"], "settings.wifi.password", password,
-                          lastError_)) {
+  bool passwordIsSecret = false;
+  if (!resolveSecretOrLiteral(doc["wifi"]["password"], secrets, "settings.wifi.password",
+                               password, passwordIsSecret, lastError_)) {
     return false;
+  }
+  // resolveSecretOrLiteral's literal branch allows an empty string (headers
+  // have always permitted this); wifi.password keeps its pre-existing,
+  // stricter "must be non-empty" contract for literal values.
+  if (!passwordIsSecret) {
+    String probe = password;
+    probe.trim();
+    if (probe.isEmpty()) {
+      lastError_ = "settings.wifi.password must be a non-empty string";
+      return false;
+    }
   }
 
   settings.ssid = ssid;
@@ -511,7 +545,7 @@ bool ConfigLoader::loadWifi(WifiSettings& settings) {
 }
 
 bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands,
-                                SecretStore* secrets) {
+                                SecretProvider* secrets) {
   commands.clear();
   if (!ensureSd(sdAvailable_, lastError_)) {
     return false;
@@ -682,16 +716,19 @@ bool ConfigLoader::loadWebhooks(std::vector<WebhookCommand>& commands,
 
         Header header;
         header.name = key;
-        if (!resolveHeaderValue(kv.value(), secrets, header.value, header.sensitive,
-                                 lastError_)) {
+        if (!resolveSecretOrLiteral(kv.value(), secrets, path + ".headers." + key, header.value,
+                                     header.sensitive, lastError_)) {
           commands.clear();
           return false;
         }
         // Secret-backed values are opaque; only literal header text may
-        // reference typed inputs.
+        // reference typed inputs. Headers use the {"secretRef": ...} object
+        // above, not {{secret.x}}, so embedded-placeholder validation never
+        // allows the secret namespace here.
         if (!header.sensitive &&
             !validateEmbeddedPlaceholders(header.value, command.inputs,
-                                           path + ".headers." + key, lastError_)) {
+                                           path + ".headers." + key, /*allowSecret=*/false,
+                                           lastError_)) {
           commands.clear();
           return false;
         }

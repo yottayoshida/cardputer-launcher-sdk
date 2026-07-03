@@ -12,9 +12,13 @@ The format is inspired by Keep a Changelog, and this project uses semantic versi
 - fn-layer arrow keys (`fn+;.,/`) as the primary navigation path, with legacy `w/s/y/n/j/k` shortcuts kept as Navigation-mode-only aliases so they no longer collide with typed text entry.
 - `TextInput` cursor movement, field-level max length, default-value seeding, and horizontal scroll window for small-screen display.
 - Webhook Launcher typed command inputs (short text, choice, boolean, confirmation) with per-field required/default/maxLength/choices validation.
-- Bounded `{{input.<key>}}` templating for Webhook Launcher URLs, headers, and JSON body values, with percent-encoding for URL substitution, JSON-escaped or type-converted substitution for body values, and a reserved `secret` namespace for future secret-backed placeholders.
+- Bounded `{{input.<key>}}` templating for Webhook Launcher URLs, headers, and JSON body values, with percent-encoding for URL substitution and JSON-escaped or type-converted substitution for body values.
 - Webhook Launcher categories, descriptions, risk labels, and a dry-run preview screen; `risk: high` commands require both `confirm` and `requirePreview`.
 - Case-insensitive URL scheme comparison in firmware config validation, matching the host-side validator's RFC 3986 behavior.
+- `SecretProvider` abstraction (`SdSecretProvider` reads `/secrets.json`) with a shared minimum-length and no-control-character policy enforced at resolve time.
+- `{{secret.<ref>}}` templating for Webhook Launcher URLs and JSON body values, and `{"secretRef": "<ref>"}` support for `wifi.password`, alongside the existing header support.
+- Per-command `RedactionRegistry` that redacts resolved secret values (raw, percent-encoded, and JSON-escaped forms) from the dry-run preview, the confirm screen, the response preview, and the JSONL log; registration is fail-closed if a command's secrets exceed the registry's capacity.
+- Optional `--secrets-file` flag for `validate_configs.py` to confirm every declared secretRef resolves before flashing an SD card.
 
 ### Changed
 

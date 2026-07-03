@@ -338,8 +338,24 @@ class WebhookV1PlaceholderTests(unittest.TestCase):
     def test_url_placeholder_unknown_namespace_rejected(self):
         with self.assertRaisesRegex(ValidationError, "reserved or unknown"):
             validate_webhook_config(
+                _command(url="https://example.com/deploy/{{foo.token}}", inputs=self._inputs())
+            )
+
+    def test_url_placeholder_secret_namespace_accepted(self):
+        # {{secret.<ref>}} is now implemented for url/body (PR2); only ref
+        # syntax is checked here, resolution happens at render time.
+        result = validate_webhook_config(
+            _command(url="https://example.com/deploy/{{secret.token}}", inputs=self._inputs())
+        )
+        self.assertEqual(
+            result["commands"][0]["url"], "https://example.com/deploy/{{secret.token}}"
+        )
+
+    def test_url_placeholder_secret_ref_bad_syntax_rejected(self):
+        with self.assertRaisesRegex(ValidationError, "secret ref must use"):
+            validate_webhook_config(
                 _command(
-                    url="https://example.com/deploy/{{secret.token}}", inputs=self._inputs()
+                    url="https://example.com/deploy/{{secret.bad ref}}", inputs=self._inputs()
                 )
             )
 

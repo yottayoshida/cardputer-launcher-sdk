@@ -155,11 +155,13 @@ For the safer provisioning prototype and sync controls, read [docs/SECRET_PROVIS
 
 ### Config Schema Reference
 
+A field that holds an entire secret value (a header value, `wifi.password`) uses a `{"secretRef": "<ref>"}` object. A field where a secret is embedded inside a larger string (a URL, a JSON body value) uses a `{{secret.<ref>}}` placeholder instead. See [docs/SECURITY.md](docs/SECURITY.md) for the resolution and redaction rules behind both forms.
+
 `/settings.json`:
 
 - `version`: required integer. Must be `1`.
 - `wifi.ssid`: required non-empty string.
-- `wifi.password`: required non-empty string.
+- `wifi.password`: required non-empty string, or a `{"secretRef": "<ref>"}` object.
 
 `/apps/webhook_launcher.json`:
 
@@ -167,10 +169,10 @@ For the safer provisioning prototype and sync controls, read [docs/SECRET_PROVIS
 - `commands`: required non-empty array of command objects.
 - `commands[].name`: required non-empty string shown in the launcher.
 - `commands[].method`: required string. Supported values are `GET` and `POST` (case-insensitive).
-- `commands[].url`: required HTTPS URL with a host. May contain `{{input.<key>}}` placeholders anywhere after the host.
+- `commands[].url`: required HTTPS URL with a host. May contain `{{input.<key>}}` or `{{secret.<ref>}}` placeholders anywhere after the host.
 - `commands[].confirm`: optional boolean. Use `true` for risky commands.
-- `commands[].headers`: optional object with non-empty keys and string or `secretRef` object values. String values may contain `{{input.<key>}}` placeholders.
-- `commands[].body`: optional JSON value for `POST` commands only. String values may be an entire `{{input.<key>}}` placeholder.
+- `commands[].headers`: optional object with non-empty keys and string or `secretRef` object values. String values may contain `{{input.<key>}}` placeholders (not `{{secret.<ref>}}`; use the `secretRef` object form for a secret-backed header).
+- `commands[].body`: optional JSON value for `POST` commands only. String values may be an entire `{{input.<key>}}` or `{{secret.<ref>}}` placeholder.
 - `commands[].category`: optional non-empty string. Commands without a category show as "Uncategorized".
 - `commands[].description`: optional non-empty string shown alongside the command.
 - `commands[].risk`: optional string, one of `low` (default), `medium`, `high`. `risk: "high"` requires both `confirm: true` and `requirePreview: true`.
