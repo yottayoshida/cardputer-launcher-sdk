@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is inspired by Keep a Changelog, and this project uses semantic versioning once a stable public API exists.
 
-## [Unreleased]
+## [0.3.0] - 2026-07-03
 
 ### Added
 
