@@ -64,6 +64,20 @@ pio run --target upload
 CI runs the same host validation and firmware build checks on pull requests.
 See [docs/CI.md](docs/CI.md) for local reproduction commands and release tag checks.
 
+## Keyboard Controls
+
+| Key | Action |
+|-----|--------|
+| `fn` + `;` `.` `,` `/` | Up / Down / Left / Right (primary navigation) |
+| `w` `s` `y` `n` `k` `j` | Legacy Up / Down / Confirm / Cancel aliases (Navigation mode only) |
+| Enter | Select |
+| Backspace | Back (leaves the current app, or deletes one character while typing) |
+| `fn` + Backspace | Clear the current text field |
+| `fn` + `` ` `` | Cancel |
+| Tab | Toggle search. Typing then filters the launcher app list or Webhook Launcher commands by name; Tab exits search while keeping the filter, Cancel exits and clears it |
+
+While a text field has keyboard focus (search, or a typed command input), every character reaches the field as literal text, so `w`, `s`, `y`, and `n` type normally instead of navigating.
+
 ## SD-Card Layout
 
 ```text
@@ -106,6 +120,27 @@ Example webhook command:
 }
 ```
 
+Example command with typed inputs and templating:
+
+```json
+{
+  "name": "Deploy to Environment",
+  "method": "POST",
+  "url": "https://example.com/webhook/deploy/{{input.env}}",
+  "category": "deploy",
+  "risk": "high",
+  "confirm": true,
+  "requirePreview": true,
+  "inputs": [
+    {"key": "env", "kind": "choice", "label": "Environment", "choices": ["staging", "prod"]},
+    {"key": "notify", "kind": "boolean", "label": "Notify Slack?", "default": "false"}
+  ],
+  "body": {"source": "cardputer", "environment": "{{input.env}}", "notify": "{{input.notify}}"}
+}
+```
+
+Typed inputs are collected from the keyboard before the request is built. A `{{input.<key>}}` placeholder may appear in the URL path/query/fragment (never in the scheme or host), in a string header value, or as an entire JSON string value in the body; URL substitutions are percent-encoded and re-validated against the same host and scheme checks used at load time, so a typed value can never redirect a request to a different host.
+
 `apps/webhook_launcher/manifest.json` identifies the app-pack and points at
 `commands.json`. `logs/` is append-only runtime output, `cache/` is disposable,
 and `backups/` is reserved for copies made before manual edits or future
@@ -131,11 +166,16 @@ For the safer provisioning prototype and sync controls, read [docs/SECRET_PROVIS
 - `version`: required integer. Must be `1`.
 - `commands`: required non-empty array of command objects.
 - `commands[].name`: required non-empty string shown in the launcher.
-- `commands[].method`: required string. Supported values are `GET` and `POST`.
-- `commands[].url`: required HTTPS URL with a host.
+- `commands[].method`: required string. Supported values are `GET` and `POST` (case-insensitive).
+- `commands[].url`: required HTTPS URL with a host. May contain `{{input.<key>}}` placeholders anywhere after the host.
 - `commands[].confirm`: optional boolean. Use `true` for risky commands.
-- `commands[].headers`: optional object with non-empty keys and string values.
-- `commands[].body`: optional JSON value for `POST` commands only.
+- `commands[].headers`: optional object with non-empty keys and string or `secretRef` object values. String values may contain `{{input.<key>}}` placeholders.
+- `commands[].body`: optional JSON value for `POST` commands only. String values may be an entire `{{input.<key>}}` placeholder.
+- `commands[].category`: optional non-empty string. Commands without a category show as "Uncategorized".
+- `commands[].description`: optional non-empty string shown alongside the command.
+- `commands[].risk`: optional string, one of `low` (default), `medium`, `high`. `risk: "high"` requires both `confirm: true` and `requirePreview: true`.
+- `commands[].requirePreview`: optional boolean. When `true`, the resolved request is shown on a preview screen before it can be sent.
+- `commands[].inputs`: optional array of typed input fields collected from the keyboard before the command runs. Each field has `key` (lowercase, `a-z0-9_`), `kind` (`text`, `choice`, `boolean`, or `confirmation`), `label`, and kind-specific options (`choices` for `choice`, `maxLength` for `text`, `default`, `required`).
 
 Validate an SD-card tree before copying it to the device:
 

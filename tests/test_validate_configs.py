@@ -86,7 +86,7 @@ class ConfigValidationTests(unittest.TestCase):
 
         self.assertEqual(result["layout"]["version"], 1)
         self.assertEqual(result["apps"]["webhook_launcher"]["manifest"]["id"], "webhook_launcher")
-        self.assertEqual(len(result["apps"]["webhook_launcher"]["commands"]["commands"]), 2)
+        self.assertEqual(len(result["apps"]["webhook_launcher"]["commands"]["commands"]), 3)
 
     def test_sample_webhook_config_is_valid(self):
         data = json.loads(
@@ -95,8 +95,28 @@ class ConfigValidationTests(unittest.TestCase):
 
         result = validate_webhook_config(data)
 
-        self.assertEqual(len(result["commands"]), 2)
+        self.assertEqual(len(result["commands"]), 3)
         self.assertEqual(result["commands"][0]["method"], "POST")
+
+    def test_sample_deploy_to_environment_command_exercises_v1_fields(self):
+        data = json.loads(
+            (REPO_ROOT / "sdcard/apps/webhook_launcher/commands.json").read_text()
+        )
+
+        result = validate_webhook_config(data)
+        command = next(
+            c for c in result["commands"] if c["name"] == "Deploy to Environment"
+        )
+
+        self.assertEqual(command["category"], "deploy")
+        self.assertEqual(command["risk"], "high")
+        self.assertTrue(command["confirm"])
+        self.assertTrue(command["requirePreview"])
+        self.assertEqual(command["url"], "https://example.com/webhook/deploy/{{input.env}}")
+        input_keys = {field["key"] for field in command["inputs"]}
+        self.assertEqual(input_keys, {"env", "reason", "notify"})
+        self.assertEqual(command["headers"]["X-Reason"], "{{input.reason}}")
+        self.assertEqual(command["body"]["environment"], "{{input.env}}")
 
     def test_rejects_unsupported_method(self):
         data = {
