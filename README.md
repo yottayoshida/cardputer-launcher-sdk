@@ -235,6 +235,6 @@ The v1.0 direction is a mini app launcher for Cardputer ADV with app lifecycle, 
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) and the [GitHub issues](https://github.com/yottayoshida/cardputer-launcher-sdk/issues) for the backlog.
 
-## License
+## License 
 
 Licensed under either Apache-2.0 or MIT, at your option. See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT).
