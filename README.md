@@ -1,5 +1,7 @@
 # Cardputer Launcher SDK
 
+> **Note:** This project is no longer actively maintained. It works as-is but no new features or fixes are planned.
+
 A keyboard-first app framework and launcher for building tiny apps on tiny computers, starting with M5Stack Cardputer ADV.
 
 Cardputer Launcher SDK is a small PlatformIO firmware project plus documentation, SD-card examples, and validation tooling. The v0.1.0 showcase app is a config-driven Webhook Launcher: put JSON command definitions on the SD card, choose a command from the Cardputer keyboard, confirm risky actions, send HTTP GET or POST requests, and keep a local request log.
@@ -8,7 +10,7 @@ Cardputer Launcher SDK is a small PlatformIO firmware project plus documentation
 
 Version: `v0.3.0`
 
-Status: early OSS release. The v0.1.0 code is intentionally small and conservative. It is meant to be readable, flashable, and useful as a starting point, not a complete dynamic app marketplace.
+Status: no longer actively maintained (see the note at the top). The v0.1.0 code is intentionally small and conservative. It is meant to be readable, flashable, and useful as a starting point, not a complete dynamic app marketplace.
 
 ## What It Does
 
